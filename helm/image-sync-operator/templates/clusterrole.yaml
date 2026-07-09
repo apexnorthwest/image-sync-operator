@@ -1,0 +1,21 @@
+{{- if .Values.rbac.create_cluster_role }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: "image-sync-operator"
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+rules:
+  - apiGroups: ["imagesync.apexnw.dev"]
+    resources: ["imagesyncs"]
+    verbs: ["get", "list", "watch"]
+  # The operator needs to be able to read secrets to perform validation
+  # Otherwise it would have to run Jobs and let them fail. It's simpler
+  # to check ahead of time if the secret exists and is of the correct type.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+{{- end }}

@@ -1,0 +1,38 @@
+---
+# Settings for the image-sync-operator Helm chart
+
+# Settings related to the operator's image
+operator:
+  # Image url to pull from
+  image: "ghcr.io/apexnorthwest/image-sync-operator:0.1.0"
+  # Image pull policy
+  image_pull_policy: "IfNotPresent"
+
+service_account:
+  # Should this chart create a service account?
+  # If false, the service account named below must already exist
+  create: true
+  # Name of the service account to use/create
+  # Defaults to release name if not set
+  name: ""
+
+# Settings related to the skopeo image used by the operator
+# Any image that contains skopeo can be used, but we prefer the official one
+skopeo:
+  # Image url to pull from
+  image: "quay.io/skopeo/stable:latest"
+  # Image pull policy
+  image_pull_policy: "IfNotPresent"
+
+# Settings related to the operator's access
+rbac:
+  # Should this chart create the cluster role `image-sync-operator`?
+  # This must be set to true if cluster_scoped is true, otherwise it is optional.
+  create_cluster_role: false
+  # Will this operator need to be cluster scoped?
+  # If true, the operator will watch all namespaces and require cluster role permissions.
+  cluster_scoped: false
+  # When not in cluster scoped mode, which namespaces should the operator watch?
+  # If empty, the operator will watch the namespace it is deployed in only.
+  # This will be ignored if cluster_scoped is true.
+  watched_namespaces: []

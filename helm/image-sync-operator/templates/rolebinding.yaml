@@ -1,0 +1,58 @@
+{{- if .Values.rbac.create_cluster_role }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: "image-sync-operator"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.service_account.name }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: "image-sync-operator"
+  apiGroup: rbac.authorization.k8s.io
+{{- if .Values.rbac.cluster_scoped }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: "image-sync-operator"
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.service_account.name }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: "image-sync-operator"
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+{{- else }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: "image-sync-operator"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.service_account.name }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: "image-sync-operator"
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
