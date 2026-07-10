@@ -1,0 +1,154 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-authenticated
+spec:
+  selector:
+    app: registry-authenticated
+  ports:
+    - port: 5000
+      targetPort: 5000
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: htpassword
+type: Opaque
+data:
+  # testuser:testpassword
+  # This is hardly a secret, it's only for testing.
+  htpassword: "dGVzdHVzZXI6JDJ5JDA1JEN2RzFiUGV3QS5XZmthMGxuOC56bWVWSElabnlubUlkM1o3Y0cxaVpYeTJ4djdyYUNaQy8uCgo="
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: registry-authenticated
+spec:
+  selector:
+    matchLabels:
+      app: registry-authenticated
+  serviceName: registry-authenticated
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: registry-authenticated
+    spec:
+      initContainers:
+        - name: init-auth
+          image: docker.io/library/registry:3
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /auth
+              cp /cred/htpassword /auth/htpasswd
+              chmod 664 /auth/htpasswd
+          volumeMounts:
+            - name: auth
+              mountPath: /auth
+            - name: cred
+              mountPath: /cred
+      containers:
+        - name: registry
+          image: docker.io/library/registry:3
+          ports:
+            - containerPort: 5000
+              name: web
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/registry
+            - name: certs
+              mountPath: /certs
+            - name: cred
+              mountPath: /cred
+            - name: auth
+              mountPath: /auth
+          env:
+            - name: REGISTRY_AUTH
+              value: htpasswd
+            - name: REGISTRY_AUTH_HTPASSWD_REALM
+              value: Testing
+            - name: REGISTRY_AUTH_HTPASSWD_PATH
+              value: /auth/htpasswd
+            - name: REGISTRY_HTTP_TLS_CERTIFICATE
+              value: /certs/tls.crt
+            - name: REGISTRY_HTTP_TLS_KEY
+              value: /certs/tls.key
+      volumes:
+        - name: certs
+          secret:
+            secretName: registry-tls
+        - name: cred
+          secret:
+            secretName: htpassword
+        - name: auth
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: registry-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+spec:
+  selector:
+    app: registry
+  ports:
+    - port: 5000
+      targetPort: 5000
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: registry
+spec:
+  selector:
+    matchLabels:
+      app: registry
+  serviceName: registry
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: registry
+    spec:
+      containers:
+        - name: registry
+          image: docker.io/library/registry:3
+          ports:
+            - containerPort: 5000
+              name: web
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/registry
+            - name: certs
+              mountPath: /certs
+          env:
+            - name: REGISTRY_HTTP_TLS_CERTIFICATE
+              value: /certs/tls.crt
+            - name: REGISTRY_HTTP_TLS_KEY
+              value: /certs/tls.key
+      volumes:
+        - name: certs
+          secret:
+            secretName: registry-tls
+  volumeClaimTemplates:
+    - metadata:
+        name: registry-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi

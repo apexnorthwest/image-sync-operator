@@ -29,6 +29,7 @@ class Operator:
     _watched_namespaces: list[str]
     _skopeo_image: str
     _skopeo_pull_policy: str
+    _skopeo_ca_bundle: str | None
 
     def __init__(self):
         """
@@ -43,6 +44,7 @@ class Operator:
             self._watched_namespaces = self._config.get('watched_namespaces', [self._namespace])
             self._skopeo_image = self._config.get('skopeo', {}).get('image', 'quay.io/skopeo/stable:latest')
             self._skopeo_pull_policy = self._config.get('skopeo', {}).get('image_pull_policy', 'IfNotPresent')
+            self._skopeo_ca_bundle = self._config.get('skopeo', {}).get('ca_trust_bundle')
         except Exception as e:
             raise InitError('Failed to initialize Operator') from e
 

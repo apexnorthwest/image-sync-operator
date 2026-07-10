@@ -42,6 +42,7 @@ approval of a new library by opening an issue. Be aware that you will be asked
 to make a good case for why the extra requirement is worth it.
 
 Approved Libraries:
+- [jinja2](https://pypi.org/project/jinja2)
 - [kubedantic](https://pypi.org/project/kubedantic/)
 - [pydantic](https://pypi.org/project/pydantic/)
 - [requests](https://pypi.org/project/requests/)
