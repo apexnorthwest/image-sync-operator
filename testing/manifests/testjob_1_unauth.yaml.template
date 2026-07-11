@@ -1,0 +1,25 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test1
+  namespace: registry
+spec:
+  template:
+    spec:
+      containers:
+        - name: imagecopy
+          image: quay.io/skopeo/stable:latest
+          command: 
+            - /bin/bash
+            - "-c"
+            - |
+              set -e
+              set -o pipefail
+              cat >> /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem <<EOF
+${CERTIFICATE_BUNDLE}
+              EOF
+              skopeo copy docker://quay.io/skopeo/stable:latest docker://registry.registry.svc.cluster.local:5000/skopeo/stable:test1
+              skopeo inspect docker://registry.registry.svc.cluster.local:5000/skopeo/stable:test1 | grep '"test1"'
+              echo "Test 1 Passed"
+      restartPolicy: Never
