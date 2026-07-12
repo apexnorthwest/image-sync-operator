@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/version: {{ .Chart.AppVersion }}
 subjects:
   - kind: ServiceAccount
-    name: {{ .Values.service_account.name }}
+    name: {{ .Values.service_account.name | default .Release.Name }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
@@ -29,7 +29,7 @@ metadata:
     app.kubernetes.io/version: {{ .Chart.AppVersion }}
 subjects:
   - kind: ServiceAccount
-    name: {{ .Values.service_account.name }}
+    name: {{ .Values.service_account.name | default .Release.Name }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
@@ -49,10 +49,29 @@ metadata:
     app.kubernetes.io/version: {{ .Chart.AppVersion }}
 subjects:
   - kind: ServiceAccount
-    name: {{ .Values.service_account.name }}
+    name: {{ .Values.service_account.name | default .Release.Name }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: Role
   name: "image-sync-operator"
   apiGroup: rbac.authorization.k8s.io
 {{- end }}
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: "image-sync-operator-leader"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.service_account.name | default .Release.Name }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: "image-sync-operator-leader"
+  apiGroup: rbac.authorization.k8s.io

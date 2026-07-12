@@ -17,12 +17,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from operator import Operator
-
+import logging
+import sys
+from sync_operator import Operator
 
 __author__ = 'Tyler Bevan <tyler@apexnorthwest.com>'
 __version__ = '0.1.0'
 __license__ = 'Apache 2.0'
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 if __name__ == '__main__':
     operator = Operator()

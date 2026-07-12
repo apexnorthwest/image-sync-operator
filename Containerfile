@@ -42,4 +42,5 @@ COPY --from=check /app/.venv/ /app/.venv/
 # Set the working directory and entrypoint for the release image
 WORKDIR /app
 ENV HOME=/app
-ENTRYPOINT ["/app/.venv/bin/python3", "/app/src/main.py"]
+ENV PYTHONPATH=/app/src
+ENTRYPOINT ["/app/.venv/bin/python3", "-u", "/app/src/main.py"]
