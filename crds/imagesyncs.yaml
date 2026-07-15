@@ -53,6 +53,10 @@ spec:
               type: boolean
               description: "If true, sync all architectures of the image manifest list. If false, only sync the architecture the operator is running on."
               default: false
+            preserveDigests:
+              type: boolean
+              description: "If true, preserve the digests of the images when syncing. If false, the operator may re-push images with new digests. Notably, this option will cause jobs to fail on multi-arch images when allArchitectures is false, as image tags are a hash of all sub-manifests and will not match the source image tag."
+              default: false
             removeOnDelete:
               type: boolean
               description: "If true, delete the destination image from the target registry when this ImageSync is deleted."

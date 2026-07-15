@@ -50,9 +50,8 @@ Approved Libraries:
 ## Rule 4: Use of the standard Kubernetes library
 You may notice that this repo does not import or utilize the
 [kubernetes](https://pypi.org/project/kubernetes/) library. The reason is simple.
-This application does not use any k8s object type other than the crd included
-with this project. In our testing, we found that the kubernetes library has a
-bad habit of allocating far more memory than required and not freeing it promptly.
+In our testing, we found that the kubernetes library has a bad habit of allocating
+far more memory than required and not freeing it promptly.
 
 As a result, we have implemented the required kubernetes api calls using the
 `requests` library directly. This is both faster to load, and uses less memory.
@@ -82,19 +81,19 @@ but reliability is a chief concern in this codebase. Both `ruff` and `ty` have
 IDE extensions that work very well.
 
 ## Rule 7: Vulnerability Scanning
-All code and container images must pass [trivy](https://trivy.dev/) scans before
-they will be merged and/or published. Should you discover a critical vulnerability,
-you are encouraged to report it via <admin@apexnorthwest.com>. Should the
-maintainers fail to respond within 30 days, you should open an issue on this repo.
-If an unpatched vulnerability is found in a library or included binary, please
-open an issue with the appropriate patched version details.
+All releases must pass [trivy](https://trivy.dev/) scans before they will be published. 
+Should you discover a critical vulnerability, you are encouraged to report it via
+<admin@apexnorthwest.com>. Should the maintainers fail to respond within 30 days,
+you should open an issue on this repo. If an unpatched vulnerability is found in a
+library or included binary, please open an issue with the appropriate patched version details.
 
 ## Rule 8: Use of AI tools
 Use of AI assisted coding tools is acceptable, but all code is expected to be
 of high quality and comply with this standards document. All code should be
 reviewed, tested, and understood by the contributor. You as the developer are
 responsible for the code you submit, AI assisted or otherwise. You, as a developer,
-must be able to explain and defend your code when asked.
+must be able to explain and defend your code when asked. 'Vibe coding' is not
+of suitable quality for use in an operator.
 
 Pull requests submitted by an automated agent or code written entirely by an
 agent are very likely to be rejected. Autonomous AI agents are powerful, but

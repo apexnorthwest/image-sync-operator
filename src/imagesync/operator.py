@@ -3,6 +3,7 @@ These functions implement the core functionality of the image-sync-operator.
 They monitor the CRDs for changes and trigger the sync Jobs to run.
 """
 
+from .imagesync import ImageSync
 from datetime import datetime, timezone
 from kubedantic.models.io.k8s.apimachinery.pkg.apis.meta.v1 import ObjectMeta
 from kubedantic.models.io.k8s.api.coordination.v1 import Lease, LeaseSpec
@@ -20,6 +21,7 @@ class InitError(Exception):
     """
     Raised when the operator fails to initialize.
     """
+
     pass
 
 
@@ -27,6 +29,7 @@ class OperationError(Exception):
     """
     Raised when the operator fails to perform an operation.
     """
+
     pass
 
 
@@ -64,11 +67,15 @@ class Operator:
             with open('/var/run/secrets/kubernetes.io/serviceaccount/namespace', 'r') as f:
                 self._namespace = f.read().strip()
             self._watched_namespaces = config.get('watched_namespaces', [self._namespace])
+            if self._namespace not in self._watched_namespaces:
+                self._watched_namespaces.append(self._namespace)
             self._skopeo_image = config.get('skopeo', {}).get('image', 'quay.io/skopeo/stable:latest')
             self._skopeo_pull_policy = config.get('skopeo', {}).get('image_pull_policy', 'IfNotPresent')
             self._skopeo_ca_bundle = config.get('skopeo', {}).get('ca_trust_bundle')
             self._token_lock = threading.Lock()
-            self._logger.debug(f'Operator initialized with cluster_scope={self._cluster_scope}, namespace={self._namespace}, watched_namespaces={self._watched_namespaces}, skopeo_image={self._skopeo_image}, skopeo_pull_policy={self._skopeo_pull_policy}, skopeo_ca_bundle={self._skopeo_ca_bundle}')
+            self._logger.debug(
+                f'Operator initialized with cluster_scope={self._cluster_scope}, namespace={self._namespace}, watched_namespaces={self._watched_namespaces}, skopeo_image={self._skopeo_image}, skopeo_pull_policy={self._skopeo_pull_policy}, skopeo_ca_bundle={self._skopeo_ca_bundle}'
+            )
         except Exception as e:
             raise InitError('Failed to initialize Operator') from e
 
@@ -132,26 +139,34 @@ class Operator:
         am_leader = False
         while not am_leader:
             self._update_token()
-            current_lease = requests.get(f'https://kubernetes.default.svc/apis/coordination.k8s.io/v1/namespaces/{self._namespace}/leases/image-sync-operator', headers={'Authorization': f'Bearer {self._api_token}'}, verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt')
+            current_lease = requests.get(
+                f'https://kubernetes.default.svc/apis/coordination.k8s.io/v1/namespaces/{self._namespace}/leases/image-sync-operator',
+                headers={'Authorization': f'Bearer {self._api_token}'},
+                verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt',
+            )
             self._logger.debug(f'Queried current leader lease, status code: {current_lease.status_code}')
             if current_lease.status_code == 404:
                 # Lease does not exist, create it
                 self._logger.debug('Leader lease does not exist, creating it')
                 lease_body = Lease(
-                    apiVersion="coordination.k8s.io/v1",
-                    kind="Lease",
-                    metadata= ObjectMeta(
-                        name="image-sync-operator",
-                        namespace=self._namespace
-                    ),
+                    apiVersion='coordination.k8s.io/v1',
+                    kind='Lease',
+                    metadata=ObjectMeta(name='image-sync-operator', namespace=self._namespace),
                     spec=LeaseSpec(
-                        holderIdentity=os.environ['HOSTNAME'], # We want to fail if we don't know who we are, so we don't use a default value here
+                        holderIdentity=os.environ[
+                            'HOSTNAME'
+                        ],  # We want to fail if we don't know who we are, so we don't use a default value here
                         leaseDurationSeconds=120,
-                        renewTime=datetime.now(timezone.utc)
-                    )
+                        renewTime=datetime.now(timezone.utc),
+                    ),
                 ).model_dump()
                 lease_body['spec']['renewTime'] = lease_body['spec']['renewTime'].isoformat()
-                response = requests.post(f'https://kubernetes.default.svc/apis/coordination.k8s.io/v1/namespaces/{self._namespace}/leases', json=lease_body, headers={'Authorization': f'Bearer {self._api_token}'}, verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt')
+                response = requests.post(
+                    f'https://kubernetes.default.svc/apis/coordination.k8s.io/v1/namespaces/{self._namespace}/leases',
+                    json=lease_body,
+                    headers={'Authorization': f'Bearer {self._api_token}'},
+                    verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt',
+                )
                 if response.status_code != 201:
                     raise OperationError(f'Failed to create leader lease: {response.text}')
                 am_leader = True
@@ -168,7 +183,12 @@ class Operator:
                     lease_body['metadata'] = {'name': 'image-sync-operator', 'namespace': self._namespace}
                     lease_body['metadata']['resourceVersion'] = lease.metadata.resourceVersion
                     lease_body['spec']['renewTime'] = datetime.now(timezone.utc).isoformat()
-                    response = requests.put(f'https://kubernetes.default.svc/apis/coordination.k8s.io/v1/namespaces/{self._namespace}/leases/image-sync-operator', json=lease_body, headers={'Authorization': f'Bearer {self._api_token}'}, verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt')
+                    response = requests.put(
+                        f'https://kubernetes.default.svc/apis/coordination.k8s.io/v1/namespaces/{self._namespace}/leases/image-sync-operator',
+                        json=lease_body,
+                        headers={'Authorization': f'Bearer {self._api_token}'},
+                        verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt',
+                    )
                     if response.status_code != 200:
                         raise OperationError(f'Failed to renew leader lease: {response.text}')
                     am_leader = True
@@ -177,7 +197,9 @@ class Operator:
                     if lease.spec.leaseDurationSeconds is None:
                         raise OperationError('Got malformed lease from API server, leaseDurationSeconds is None')
                     # Check if the lease is expired
-                    if lease.spec.renewTime is not None and int((datetime.now(timezone.utc) - lease.spec.renewTime).total_seconds()) > int(lease.spec.leaseDurationSeconds):
+                    if lease.spec.renewTime is not None and int(
+                        (datetime.now(timezone.utc) - lease.spec.renewTime).total_seconds()
+                    ) > int(lease.spec.leaseDurationSeconds):
                         # Lease is expired, we can take it over
                         self._logger.debug('Leader lease is expired, taking it over')
                         lease.spec.holderIdentity = os.environ['HOSTNAME']
@@ -185,7 +207,12 @@ class Operator:
                         lease_body['metadata'] = {'name': 'image-sync-operator', 'namespace': self._namespace}
                         lease_body['metadata']['resourceVersion'] = lease.metadata.resourceVersion
                         lease_body['spec']['renewTime'] = datetime.now(timezone.utc).isoformat()
-                        response = requests.put(f'https://kubernetes.default.svc/apis/coordination.k8s.io/v1/namespaces/{self._namespace}/leases/image-sync-operator', json=lease_body, headers={'Authorization': f'Bearer {self._api_token}'}, verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt')
+                        response = requests.put(
+                            f'https://kubernetes.default.svc/apis/coordination.k8s.io/v1/namespaces/{self._namespace}/leases/image-sync-operator',
+                            json=lease_body,
+                            headers={'Authorization': f'Bearer {self._api_token}'},
+                            verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt',
+                        )
                         if response.status_code != 200:
                             raise OperationError(f'Failed to take over leader lease: {response.text}')
                         am_leader = True
@@ -195,20 +222,24 @@ class Operator:
                     am_leader = False
                     self._logger.info(f'Leader lease is held by {lease.spec.holderIdentity}, waiting for it to expire')
                     time.sleep(5)  # Wait for 5 seconds before checking the lease again
-    
+
     def _delete_leader_lease(self):
         """
         Delete the leader lease to relinquish leadership.
         This method will delete the lease from the API server.
         """
         self._update_token()
-        response = requests.delete(f'https://kubernetes.default.svc/apis/coordination.k8s.io/v1/namespaces/{self._namespace}/leases/image-sync-operator', headers={'Authorization': f'Bearer {self._api_token}'}, verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt')
+        response = requests.delete(
+            f'https://kubernetes.default.svc/apis/coordination.k8s.io/v1/namespaces/{self._namespace}/leases/image-sync-operator',
+            headers={'Authorization': f'Bearer {self._api_token}'},
+            verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt',
+        )
         if response.status_code != 200:
             self._logger.error(f'Failed to delete leader lease: {response.text}')
             # We don't raise an error here in order to allow shutdown to complete
         else:
             self._logger.info('Deleted Leader Lease')
-    
+
     def _maintenance_loop(self):
         """
         Run the maintenance loop of the operator.
@@ -218,3 +249,38 @@ class Operator:
             self._acquire_leader_lease()
             self._logger.debug('Leader lease is valid, sleeping for 30 seconds before next check')
             time.sleep(30)  # Sleep for 30 seconds before checking the lease again
+
+    def get_cr_list(self) -> list[ImageSync]:
+        """
+        Get the list of ImageSync CRs from the API server.
+        This method will return a list of ImageSync objects representing the CRs.
+
+        Returns:
+            list[ImageSync]: A list of ImageSync objects representing the CRs.
+        """
+        self._update_token()
+        cr_list = []
+        if self._cluster_scope:
+            response = requests.get(
+                'https://kubernetes.default.svc/apis/imagesync.apexnw.dev/v1/imagesyncs',
+                headers={'Authorization': f'Bearer {self._api_token}'},
+                verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt',
+            )
+            if response.status_code != 200:
+                raise OperationError(f'Failed to get ImageSync CRs from cluster scope: {response.text}')
+            cr_json = response.json()
+            for item in cr_json.get('items', []):
+                cr_list.append(ImageSync.model_validate(item))
+        else:
+            for ns in self._watched_namespaces:
+                response = requests.get(
+                    f'https://kubernetes.default.svc/apis/imagesync.apexnw.dev/v1/namespaces/{ns}/imagesyncs',
+                    headers={'Authorization': f'Bearer {self._api_token}'},
+                    verify='/var/run/secrets/kubernetes.io/serviceaccount/ca.crt',
+                )
+                if response.status_code != 200:
+                    raise OperationError(f'Failed to get ImageSync CRs from namespace {ns}: {response.text}')
+                cr_json = response.json()
+                for item in cr_json.get('items', []):
+                    cr_list.append(ImageSync.model_validate(item))
+        return cr_list

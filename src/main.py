@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Entrypoint for the image sync operator. Primarily, this initializes the operator and runs the main watch loop.
+Entrypoint for the image sync operator. Primarily, this initializes the operator and runs the main loop.
 
 Copyright 2026 Apex Northwest
 
@@ -19,7 +19,7 @@ limitations under the License.
 
 import logging
 import sys
-from sync_operator import Operator
+from imagesync.operator import Operator
 
 __author__ = 'Tyler Bevan <tyler@apexnorthwest.com>'
 __version__ = '0.1.0'
