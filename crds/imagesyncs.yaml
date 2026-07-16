@@ -13,7 +13,7 @@ spec:
   versions:
     - name: v1alpha1
       served: true
-      stored: true
+      storage: true
       schema:
         openAPIV3Schema:
           type: object
@@ -32,7 +32,7 @@ spec:
                 registryLoginSecret:
                   type: string
                   description: "Name of the Kubernetes Secret containing registry credentials (in same namespace)"
-                  pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+                  pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
             destination:
               type: object
               required:
@@ -44,11 +44,11 @@ spec:
                 registryLoginSecret:
                   type: string
                   description: "Name of the Kubernetes Secret containing registry credentials (in same namespace)"
-                  pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
-            frequencyMinutes:
-              type: integer
-              minimum: 1
-              description: "Interval in minutes between sync operations (default is unset, meaning only sync once)"
+                  pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+            cronSchedule:
+              type: string
+              description: "Cron schedule for periodic syncs (default is unset, meaning only sync once)"
+              pattern: "^([0-5]?\\d|\\*)\\s+([0-5]?\\d|\\*)\\s+([01]?\\d|2[0-3]|\\*)\\s+([1-9]|[12]\\d|3[01]|\\*)\\s+([1-9]|1[012]|\\*)$"
             allArchitectures:
               type: boolean
               description: "If true, sync all architectures of the image manifest list. If false, only sync the architecture the operator is running on."
@@ -56,8 +56,4 @@ spec:
             preserveDigests:
               type: boolean
               description: "If true, preserve the digests of the images when syncing. If false, the operator may re-push images with new digests. Notably, this option will cause jobs to fail on multi-arch images when allArchitectures is false, as image tags are a hash of all sub-manifests and will not match the source image tag."
-              default: false
-            removeOnDelete:
-              type: boolean
-              description: "If true, delete the destination image from the target registry when this ImageSync is deleted."
               default: false

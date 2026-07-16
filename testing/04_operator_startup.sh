@@ -25,6 +25,7 @@ fi
 
 # Installs the operator with helm and waits for it to be ready.
 # We check the leader lease directly to ensure that the operator is actually running and has acquired the lease.
+kubectl apply -f ../crds/imagesyncs.yaml
 
 helm install image-sync-operator ../helm/image-sync-operator --namespace image-sync-operator --create-namespace \
   --set operator.image.repository=localhost/image-sync-operator \
@@ -37,7 +38,7 @@ helm install image-sync-operator ../helm/image-sync-operator --namespace image-s
 
 # Try for up to 3 minutes to get the leader lease, this method is inexact but simple.
 for i in {1..180}; do
-  if kubectl -n image-sync-operator logs deployment/image-sync-operator | grep -q "image-sync-operator:Operator has become the leader"; then
+  if kubectl -n image-sync-operator logs deployment/image-sync-operator | grep -q "Operator has become the leader"; then
     echo "Operator has become the leader"
     break
   fi
