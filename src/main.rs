@@ -16,33 +16,62 @@ See the License for the specific language governing permissions and
 limitations under the License.
  */
 
+mod config;
 mod imagesync;
-use imagesync::ImageSync;
-use std::{sync::Arc, time::Duration};
+use config::Config;
+use config::read_config_file;
 use futures::StreamExt;
+use imagesync::ImageSync;
+use k8s_openapi::api::batch::v1::{CronJob, CronJobSpec, CronJobStatus, Job, JobSpec, JobStatus};
 use kube::{
     Api, Client, ResourceExt,
-    runtime::controller::{Action, Controller}
+    api::ListParams,
+    runtime::controller::{Action, Controller},
 };
 use kube_lease_manager::LeaseManagerBuilder;
+use once_cell::sync::Lazy;
+use std::{sync::Arc, time::Duration};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {}
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+pub static CONFIG: Lazy<Config> =
+    Lazy::new(|| read_config_file().expect("Failed to read config file"));
+
 #[tokio::main]
 async fn main() -> Result<(), kube::Error> {
     let client = Client::try_default().await?;
     let namespace = client.default_namespace();
+
     let manager_client = Client::try_default().await?;
     let manager = LeaseManagerBuilder::new(manager_client, "image-sync-operator")
-            .with_namespace(namespace)
-            .build()
-            .await.unwrap();
+        .with_namespace(namespace)
+        .build()
+        .await
+        .unwrap();
 
     let controller_client = Client::try_default().await?;
-    let imagesyncs = Api::<ImageSync>::all(controller_client);
+    let mut imagesyncs: Vec<Api<ImageSync>>;
+    if CONFIG.cluster_scope {
+        println!("Operator is running in cluster-scoped mode");
+        imagesyncs = vec![Api::<ImageSync>::all(controller_client)];
+    } else {
+        println!("Operator is running in namespace-scoped mode");
+        imagesyncs = Vec::<Api<ImageSync>>::new();
+        let namespaces = if ! CONFIG.watched_namespaces.contains(&namespace.to_string()) {
+            vec![namespace.to_string()]
+        } else {
+            CONFIG.watched_namespaces.clone()
+        };
+        for ns in namespaces.iter() {
+            let api = Api::<ImageSync>::namespaced(controller_client.clone(), ns);
+            imagesyncs.push(api);
+        }
+    }
+    println!("Operator has {} watchers", imagesyncs.len());
+    println!("Operator is starting with the following configuration: {:?}", *CONFIG);
 
     // Start manager in watching mode and get back status channel and task handler.
     let (mut channel, task) = manager.watch().await;
@@ -55,15 +84,26 @@ async fn main() -> Result<(), kube::Error> {
             if lock_state {
                 // Do something useful as a leader
                 println!("Operator has become the leader");
-                Controller::new(imagesyncs.clone(), Default::default())
-                    .run(reconcile, error_policy, Arc::new(()))
-                    .for_each(|_| futures::future::ready(())).await;
+                if CONFIG.cluster_scope {
+                    println!("Starting controller for cluster-scoped ImageSyncs");
+                    Controller::new(imagesyncs[0].clone(), Default::default())
+                        .run(reconcile, error_policy, Arc::new(()))
+                        .for_each(|_| futures::future::ready(())).await;
+                } else {
+                    for ns in imagesyncs.iter() {
+                        println!("Starting controller for namespace: {}", ns.namespace().unwrap());
+                        Controller::new(ns.clone(), Default::default())
+                            .run(reconcile, error_policy, Arc::new(()))
+                            .for_each(|_| futures::future::ready(())).await;
+                    }
+                }
             }
         }
         _ = tokio::time::sleep(Duration::from_secs(60)) => {
             println!("Unable to get lock during 60s");
         }
     }
+    println!("Operator is shutting down");
 
     // Explicitly close the control channel
     drop(channel);
@@ -75,7 +115,138 @@ async fn main() -> Result<(), kube::Error> {
 }
 
 async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
+    let skopeo_image = &CONFIG.skopeo.image;
+    let skopeo_pull_policy = &CONFIG.skopeo.image_pull_policy;
+    let skopeo_ca_trust_bundle = &CONFIG.skopeo.ca_trust_bundle;
     println!("reconcile request: {}", obj.name_any());
+    println!("spec: {:?}", obj.spec);
+    let imagesyncs = Api::<ImageSync>::namespaced(
+        Client::try_default().await.unwrap(),
+        &obj.namespace().unwrap(),
+    );
+    let jobs = Api::<Job>::namespaced(
+        Client::try_default().await.unwrap(),
+        &obj.namespace().unwrap(),
+    );
+
+    let basename = if obj.metadata.name.iter().len() > 50 {
+        obj.metadata.name.clone().unwrap()[0..50].to_string()
+    } else {
+        obj.metadata.name.clone().unwrap()
+    };
+    let joblist = jobs
+        .list(
+            &ListParams::default().labels(&format!("imagesync.apexnw.dev/imagesync={}", obj.metadata.name.clone().unwrap())),
+        )
+        .await
+        .unwrap();
+    // TODO: Before anything else, check if the job's config is valid and set accepted=true or false accordingly.
+    // Primarily, we need to check the syntax of the source and dest urls, 
+    // the secrets exist if they're referenced (Though this particular error should be a short requeue since the secrets could get created shortly),
+    // and ensure that the cron schedule is valid if set.
+    // TODO: If the job is marked as ready=true, we don't care about the job as long as the spec matches the last_applied_config.
+    // If the spec doesn't match, we need to set ready=false and requeue with a short wait.
+    // TODO: Rather than just assuming that the job is correct we need to get the job and compare it to the configured spec.
+    // If the job spec is wrong, we should delete it and requeue the reconcile.
+    // TODO: When the job gets created, we need to set the last_applied_config to the current spec and set ready=false and accepted=true.
+    // TODO: Check if the config has a schedule first, if it does and ready=true, create a cronjob instead of a job.
+    // TODO: If the config has a schdule, but no cronjob, and the status is ready=false, then run a regular job first to get it into ready state, then requeue.
+    // TODO: If the status is ready=false, but the job exists and is not finished, then requeue with a short wait.
+    // TODO: If the status is ready=false, but the job exists and is finished, check if the job was successful, if it was, set ready=true and requeue with a short wait.
+    // If the job finished with an error, set ready=false and set a message to that effect. Then requeue with the long wait, as this is likely a configuration error.
+    // TODO: If there is a cron schedule set, we must ALWAYS check the cronjob's config to ensure it matches both the spec and last_applied_spec. If any of these mismatch, remove the cronjob (and job if it exists) and requeue.
+    if joblist.items.len() == 0 {
+        println!("Creating job for imagesync: {}", obj.name_any());
+        let mut containers = Vec::<k8s_openapi::api::core::v1::Container>::new();
+        let mut command: Vec<String> = Vec::<String>::new();
+        command.push("/bin/bash".to_string());
+        command.push("-c".to_string());
+        command.push(r#"cat >> /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem <<EOF
+{ca_trust_bundle}
+EOF
+skopeo copy {preserve_digests} {all_architectures} {src_options} {dest_options} docker://{src} docker://{dest}"#
+                    .replace("{ca_trust_bundle}", skopeo_ca_trust_bundle.as_ref().map_or("", |s| s))
+                    .replace("{preserve_digests}", if obj.spec.preserve_digests.unwrap_or(false) { "--preserve-digests" } else { "" })
+                    .replace("{all_architectures}", if obj.spec.all_architectures.unwrap_or(false) { "--all" } else { "" })
+                    .replace("{src_options}", if obj.spec.source.registry_login_secret.is_some() { "--src-authfile /creds/src/.dockerconfigjson" } else { "" })
+                    .replace("{dest_options}", if obj.spec.destination.registry_login_secret.is_some() { "--dest-authfile /creds/dest/.dockerconfigjson" } else { "" })
+                    .replace("{src}", &obj.spec.source.image)
+                    .replace("{dest}", &obj.spec.destination.image));
+        containers.push(k8s_openapi::api::core::v1::Container {
+            name: "skopeo".to_string(),
+            image: Some(skopeo_image.clone()),
+            image_pull_policy: Some(skopeo_pull_policy.clone()),
+            command: Some(command),
+            volume_mounts: Some(vec![
+                k8s_openapi::api::core::v1::VolumeMount {
+                    name: "creds-src".to_string(),
+                    mount_path: "/creds/src".to_string(),
+                    read_only: Some(true),
+                    ..Default::default()
+                },
+                k8s_openapi::api::core::v1::VolumeMount {
+                    name: "creds-dest".to_string(),
+                    mount_path: "/creds/dest".to_string(),
+                    read_only: Some(true),
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        });
+        let job = Job {
+            metadata: kube::api::ObjectMeta {
+                name: Some(format!("imagesync-{}", basename)),
+                labels: Some(std::collections::BTreeMap::from([
+                    ("imagesync.apexnw.dev/imagesync".to_string(), basename.clone())
+                ])),
+                ..Default::default()
+            },
+            spec: Some(JobSpec {
+                template: k8s_openapi::api::core::v1::PodTemplateSpec {
+                    metadata: Some(k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta {
+                        labels: Some(std::collections::BTreeMap::from([
+                            ("imagesync.apexnw.dev/imagesync".to_string(), basename.clone())
+                        ])),
+                        ..Default::default()
+                    }),
+                    spec: Some(k8s_openapi::api::core::v1::PodSpec {
+                        containers: containers,
+                        volumes: Some(vec![
+                            k8s_openapi::api::core::v1::Volume {
+                                name: "creds-src".to_string(),
+                                secret: obj.spec.source.registry_login_secret.as_ref().map(|secret_name| k8s_openapi::api::core::v1::SecretVolumeSource {
+                                    secret_name: Some(secret_name.clone()),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            },
+                            k8s_openapi::api::core::v1::Volume {
+                                name: "creds-dest".to_string(),
+                                secret: obj.spec.destination.registry_login_secret.as_ref().map(|secret_name| k8s_openapi::api::core::v1::SecretVolumeSource {
+                                    secret_name: Some(secret_name.clone()),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            },
+                        ]),
+                        restart_policy: Some("Never".to_string()),
+                        ..Default::default()
+                    }),
+                },
+                backoff_limit: Some(4),
+                ..Default::default()
+            }),
+            status: None,
+        };
+        jobs.create(&Default::default(), &job).await.unwrap();
+    } else {
+        println!("Job already exists for imagesync: {}", obj.name_any());
+    }
+    // Sleep for 60sec to let job finish for testing
+    tokio::time::sleep(Duration::from_secs(60)).await;
+    let job = jobs.get(&format!("imagesync-{}", basename)).await.unwrap();
+    println!("Job status: {:?}", job.status);
+
     Ok(Action::requeue(Duration::from_secs(3600)))
 }
 

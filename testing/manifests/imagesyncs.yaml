@@ -1,0 +1,48 @@
+---
+apiVersion: imagesync.apexnw.dev/v1alpha1
+kind: ImageSync
+metadata:
+  name: test-image-sync-unauth
+spec:
+  source:
+    image: "docker.io/library/alpine:latest"
+  destination:
+    image: "registry.registry.svc.cluster.local:5000/library/alpine:latest"
+
+---
+apiVersion: imagesync.apexnw.dev/v1alpha1
+kind: ImageSync
+metadata:
+  name: test-image-sync-destauth
+spec:
+  source:
+    image: "docker.io/library/alpine:latest"
+  destination:
+    image: "registry-authenticated.registry.svc.cluster.local:5000/library/alpine:latest"
+    registryLoginSecret: "private-registry"
+
+---
+apiVersion: imagesync.apexnw.dev/v1alpha1
+kind: ImageSync
+metadata:
+  name: test-image-sync-cron-unauth
+spec:
+  source:
+    image: "docker.io/library/alpine:latest"
+  destination:
+    image: "registry-authenticated.registry.svc.cluster.local:5000/library/alpine:latest"
+    registryLoginSecret: "private-registry"
+  cronSchedule: "*/15 * * * *"
+
+---
+apiVersion: imagesync.apexnw.dev/v1alpha1
+kind: ImageSync
+metadata:
+  name: test-image-sync-cron-destauth
+spec:
+  source:
+    image: "docker.io/library/alpine:latest"
+  destination:
+    image: "registry-authenticated.registry.svc.cluster.local:5000/library/alpine:latest"
+    registryLoginSecret: "private-registry"
+  cronSchedule: "*/15 * * * *"

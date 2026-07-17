@@ -18,7 +18,10 @@ rules:
   # to check ahead of time if the secret exists and is of the correct type.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list"]
+    verbs: ["list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "create", "delete"]
 {{- end }}
 
 ---
