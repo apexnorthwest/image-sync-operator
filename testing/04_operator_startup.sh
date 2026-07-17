@@ -6,15 +6,15 @@ export KUBECONFIG=./testing-kubeconfig
 # Build the operator image and push it to the local registry. Relies on BUILD_TOOL being set.
 # bypasses tls checks for the local registry, which is insecure by default.
 if [ "$BUILD_TOOL" == "docker" ]; then
-  sudo docker build -t image-sync-operator:latest ../
+  sudo docker build -f ../Dockerfile-debug -t image-sync-operator:latest ../
   sudo kind load docker-image image-sync-operator:latest --name testing
 elif [ "$BUILD_TOOL" == "podman" ]; then
-  sudo podman build -t localhost/image-sync-operator:latest ../
+  sudo podman build -f ../Dockerfile-debug -t localhost/image-sync-operator:latest ../
   sudo podman save image-sync-operator:latest > ../image-sync-operator-latest.tar
   sudo kind load image-archive ../image-sync-operator-latest.tar --name testing
   sudo rm image-sync-operator-latest.tar
 elif [ "$BUILD_TOOL" == "buildah" ]; then
-  sudo buildah bud --layers -f ../Containerfile-debug -t image-sync-operator:latest ../
+  sudo buildah bud --layers -f ../Dockerfile-debug -t image-sync-operator:latest ../
   sudo buildah push image-sync-operator:latest docker-archive:"./image-sync-operator-latest.tar"
   sudo kind load image-archive ./image-sync-operator-latest.tar --name testing
   sudo rm -rf image-sync-operator-latest.tar
