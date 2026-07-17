@@ -1,6 +1,6 @@
 # Image Sync Operator
 This Kubernetes operator is designed with one purpose: To copy container images
-from one repository to another,either on demand or on a schedule.
+from one repository to another, either on demand or on a schedule.
 
 ## Usage
 This project is still a work in progress, and should be considered pre-alpha. Until this

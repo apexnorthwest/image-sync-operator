@@ -13,47 +13,76 @@ spec:
   versions:
     - name: v1alpha1
       served: true
-      stored: true
+      storage: true
       schema:
         openAPIV3Schema:
           type: object
           required:
-            - source
-            - destination
+            - spec
           properties:
-            source:
+            spec:
               type: object
               required:
-                - image
+                - source
+                - destination
               properties:
-                image:
+                source:
+                  type: object
+                  required:
+                    - image
+                  properties:
+                    image:
+                      type: string
+                      description: "Source image reference (e.g., 'registry.com/repo:tag' or 'registry.com/repo@digest)"
+                    registryLoginSecret:
+                      type: string
+                      description: "Name of the Kubernetes Secret containing registry credentials (in same namespace)"
+                      pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+                destination:
+                  type: object
+                  required:
+                    - image
+                  properties:
+                    image:
+                      type: string
+                      description: "Destination image reference (e.g., 'registry.com/repo:tag')"
+                    registryLoginSecret:
+                      type: string
+                      description: "Name of the Kubernetes Secret containing registry credentials (in same namespace)"
+                      pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+                cronSchedule:
                   type: string
-                  description: "Source image reference (e.g., 'registry.com/repo:tag' or 'registry.com/repo@digest)"
-                registryLoginSecret:
-                  type: string
-                  description: "Name of the Kubernetes Secret containing registry credentials (in same namespace)"
-                  pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
-            destination:
+                  description: "Cron schedule for periodic syncs (default is unset, meaning only sync once)"
+                  pattern: "^([0-5]?\\d|\\*)\\s+([0-5]?\\d|\\*)\\s+([01]?\\d|2[0-3]|\\*)\\s+([1-9]|[12]\\d|3[01]|\\*)\\s+([1-9]|1[012]|\\*)$"
+                allArchitectures:
+                  type: boolean
+                  description: "If true, sync all architectures of the image manifest list. If false, only sync the architecture the operator is running on."
+                  default: false
+                preserveDigests:
+                  type: boolean
+                  description: "If true, preserve the digests of the images when syncing. If false, the operator may re-push images with new digests. Notably, this option will cause jobs to fail on multi-arch images when allArchitectures is false, as image tags are a hash of all sub-manifests and will not match the source image tag."
+                  default: false
+            status:
               type: object
               required:
-                - image
+                - accepted
+                - ready
+                - lastAppliedConfig
+                - message
               properties:
-                image:
+                accepted:
+                  type: boolean
+                  description: "Whether the ImageSync has been accepted by the operator."
+                ready:
+                  type: boolean
+                  description: "Whether the ImageSync is ready (i.e., the image has been successfully synced, not necessarily during the most recent attempt)."
+                lastCompletionTime:
                   type: string
-                  description: "Destination image reference (e.g., 'registry.com/repo:tag')"
-                registryLoginSecret:
+                  format: date-time
+                  description: "The last time the image was successfully synced."
+                lastAppliedConfig:
                   type: string
-                  description: "Name of the Kubernetes Secret containing registry credentials (in same namespace)"
-                  pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
-            frequencyMinutes:
-              type: integer
-              minimum: 1
-              description: "Interval in minutes between sync operations (default is unset, meaning only sync once)"
-            allArchitectures:
-              type: boolean
-              description: "If true, sync all architectures of the image manifest list. If false, only sync the architecture the operator is running on."
-              default: false
-            removeOnDelete:
-              type: boolean
-              description: "If true, delete the destination image from the target registry when this ImageSync is deleted."
-              default: false
+                  description: "The last applied configuration of the image sync."
+                message:
+                  type: string
+                  description: "A message describing the current status of the ImageSync."

@@ -4,9 +4,12 @@
 # Settings related to the operator's image
 operator:
   # Image url to pull from
-  image: "ghcr.io/apexnorthwest/image-sync-operator:0.1.0"
-  # Image pull policy
-  image_pull_policy: "IfNotPresent"
+  image: 
+    repository: "ghcr.io/apexnorthwest/image-sync-operator"
+    tag: "0.1.0"
+    pullPolicy: "IfNotPresent"
+  # Enable for debug logging
+  debug: false
 
 service_account:
   # Should this chart create a service account?
@@ -17,12 +20,18 @@ service_account:
   name: ""
 
 # Settings related to the skopeo image used by the operator
-# Any image that contains skopeo can be used, but we prefer the official one
+# Technically, any image that contains skopeo can be used, but we prefer the official one
+# Notably, the ca trust must be in /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
 skopeo:
   # Image url to pull from
-  image: "quay.io/skopeo/stable:latest"
-  # Image pull policy
-  image_pull_policy: "IfNotPresent"
+  image:
+    repository: "quay.io/skopeo/stable"
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
+  # Optional CA trust bundle to use when verifying TLS connections to registries
+  # This should be a PEM encoded bundle of CA certificates, and will be appended
+  # to the system CA trust bundle in the skopeo container.
+  ca_trust_bundle: ""
 
 # Settings related to the operator's access
 rbac:

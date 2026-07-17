@@ -1,0 +1,31 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test2
+  namespace: registry
+spec:
+  template:
+    spec:
+      containers:
+        - name: imagecopy
+          image: quay.io/skopeo/stable:latest
+          command: 
+            - /bin/bash
+            - "-c"
+            - |
+              set -e
+              cat >> /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem <<EOF
+${CERTIFICATE_BUNDLE}
+              EOF
+              skopeo copy --dest-authfile /creds/dest/.dockerconfigjson docker://quay.io/skopeo/stable:latest docker://registry-authenticated.registry.svc.cluster.local:5000/skopeo/stable:test2
+              skopeo inspect --authfile /creds/dest/.dockerconfigjson docker://registry-authenticated.registry.svc.cluster.local:5000/skopeo/stable:test2 | grep '"test2"'
+              echo "Test 2 Passed"
+          volumeMounts:
+            - name: dest-creds
+              mountPath: /creds/dest
+      volumes:
+        - name: dest-creds
+          secret:
+            secretName: private-registry
+      restartPolicy: Never

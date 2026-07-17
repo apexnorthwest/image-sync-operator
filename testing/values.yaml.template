@@ -1,0 +1,62 @@
+---
+operator:
+  image: 
+    repository: "localhost/image-sync-operator"
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
+  debug: false
+
+service_account:
+  create: true
+  name: ""
+
+skopeo:
+  image:
+    repository: "quay.io/skopeo/stable"
+    tag: "latest"
+    pullPolicy: "IfNotPresent"
+  ca_trust_bundle: |
+    -----BEGIN CERTIFICATE-----
+    MIIGzTCCBLWgAwIBAgIUZ6OvhTIJc2idt/PqatTubmqF5YowDQYJKoZIhvcNAQEL
+    BQAwfTELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcM
+    DVNhbiBGcmFuY2lzY28xEzARBgNVBAoMCk15IENvbXBhbnkxLDAqBgNVBAMMI3Jl
+    Z2lzdHJ5LnJlZ2lzdHJ5LnN2Yy5jbHVzdGVyLmxvY2FsMB4XDTI2MDcxNjIzMzEy
+    NVoXDTI2MDcyMzIzMzEyNVowfTELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlm
+    b3JuaWExFjAUBgNVBAcMDVNhbiBGcmFuY2lzY28xEzARBgNVBAoMCk15IENvbXBh
+    bnkxLDAqBgNVBAMMI3JlZ2lzdHJ5LnJlZ2lzdHJ5LnN2Yy5jbHVzdGVyLmxvY2Fs
+    MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA5xzwhgar3Yazymf4FAxp
+    2PLef+UJFtiXG3sdkuMh8zFBaTEdwNNOWeQDpw2S7R9v4Ym0KXC9Py+2n1RmGmHv
+    8zsyz0UN4GQXXQQvEn0Ps6eGixk9eXhxe75gBjUdNkI3geV5DsgvI/2/4McmLJu+
+    YLFSZ3wZTNHmthbcw5imdmN9I7VHUHEH1TbpG90f4jnkvkqwEhRikA2Ehiu1k0pJ
+    0+5nWfcziLBwg1DbdMjYVd5LWYC8RBvU5icOpbjZUdyyAIIlGq+dKQaHLrd2Wt51
+    x+wz6ZWaEwhygnMCFCkPk3XCa9Rf7N2tjBquHU5rEIiycXFgiMr9AtUGBtagZkEf
+    sPGRy7wbAmmUZsRdxkS5R0W/03Bp686zYOh33Gu7TxaccR1UvTXR7ukA7rlD1NtP
+    2cCuIXDQZ3Oy6FLl2LIrGBnw5KaMQWIaUqaiN4Pdtoj8sqQ99rSIigv+kcxTeTDn
+    yqKj5t0k5IagZWk/YrpZaGMpOAhGNEVEzVdFCtsfVcviQS4CdiXhyJaNveTo1mdb
+    Mr4eVeDmquuoPS2EKmUdKfgK1Mpwj5IQBEWUuw8K8UC+YMltBQHLDNC26l22rktz
+    5qsbxFBQtn7/KTqTuZzH3+dyhtgG4exeF49VI76JWVEms946xgxRrWsmewJXYCEP
+    p9NrrEPwNmgtZBJXroX3b4kCAwEAAaOCAUMwggE/MB0GA1UdDgQWBBS1HavZnwuU
+    Oc/fMeOLG88Q5SwSnDAfBgNVHSMEGDAWgBS1HavZnwuUOc/fMeOLG88Q5SwSnDAP
+    BgNVHRMBAf8EBTADAQH/MIHrBgNVHREEgeMwgeCCMXJlZ2lzdHJ5LWF1dGhlbnRp
+    Y2F0ZWQucmVnaXN0cnkuc3ZjLmNsdXN0ZXIubG9jYWyCI3JlZ2lzdHJ5LWF1dGhl
+    bnRpY2F0ZWQucmVnaXN0cnkuc3ZjghpyZWdpc3RyeS1hdXRoZW50aWNhdGVkLnN2
+    Y4IWcmVnaXN0cnktYXV0aGVudGljYXRlZIIjcmVnaXN0cnkucmVnaXN0cnkuc3Zj
+    LmNsdXN0ZXIubG9jYWyCFXJlZ2lzdHJ5LnJlZ2lzdHJ5LnN2Y4IMcmVnaXN0cnku
+    c3ZjgghyZWdpc3RyeTANBgkqhkiG9w0BAQsFAAOCAgEAWYFhJPFQr5QRhB3stI2w
+    sE7csCbQEUg7UwO8ZxP8825Tph2CUaqahofe5MifmUEeTRKA6hKdkC9zXmsvXhfu
+    Z7Gru0sojaLIlR803vaR8ntT70ttaixD4wM+RuYuZNRNCBcNpMBDZX++s4PExHB/
+    Vxz+1Hlvdd+jUZKGuoMD8zJS4dDPYDwVJdWkw3zyIOwJj5X3JnlC1+UwWS+kV1ps
+    JnhatjDKFsVMZ4UUUGe/WF1bkSQowhCiGt0cviSHMg/BnDvGaz+08BfqM4duNi+W
+    S9rxN/0Ayc+8HFZ5iAOepav8VxNKdIv5o0Bl5mwie9IqlRxGS8PLBEFIWMbkPAyf
+    qPTmPi+Iur/AF/kCPHDm57wemccXVHNDQCQCoKwCkg3r4pNlFyNyAfcPH3oxyiSE
+    1fN+Ka8uQg4GR67Lv3PCoHUIg7FrWnNC7qVYlqSy8tvYanFQawR8SLpbAESCmSPS
+    mXS214En/wNmNCyuVfW5mguxqm3Yppm6X+ps78BA1uoO/GDUlWq5J3BNvRcAlpb2
+    w+RDas/rBjR1touaDAQxgpnFojzpIujmE9/zNAikc6/6E27E+I1D4sdlN37gQi58
+    emPq5qOw9okfPh2qDLMpzrpndhJFxGGHEiZ4p+ToIGv+XCzNkCta8pzDYrz38MDC
+    JC6rjezAuvMLLjUV87COBZQ=
+    -----END CERTIFICATE-----
+
+rbac:
+  create_cluster_role: false
+  cluster_scoped: false
+  watched_namespaces: []
