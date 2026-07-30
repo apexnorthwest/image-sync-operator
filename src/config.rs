@@ -3,7 +3,6 @@ Config represents the yaml config file consumed by the operator at startup from 
 Use the read_config_file() function to read the config file and return a Config struct.
 */
 use serde::Deserialize;
-use yaml_serde;
 use std::fs;
 
 #[derive(Debug, Deserialize)]

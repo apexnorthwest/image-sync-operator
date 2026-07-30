@@ -53,7 +53,6 @@ spec:
                 cronSchedule:
                   type: string
                   description: "Cron schedule for periodic syncs (default is unset, meaning only sync once)"
-                  pattern: "^([0-5]?\\d|\\*)\\s+([0-5]?\\d|\\*)\\s+([01]?\\d|2[0-3]|\\*)\\s+([1-9]|[12]\\d|3[01]|\\*)\\s+([1-9]|1[012]|\\*)$"
                 allArchitectures:
                   type: boolean
                   description: "If true, sync all architectures of the image manifest list. If false, only sync the architecture the operator is running on."

@@ -22,7 +22,7 @@ use config::Config;
 use config::read_config_file;
 use futures::StreamExt;
 use imagesync::ImageSync;
-use k8s_openapi::api::batch::v1::{CronJob, CronJobSpec, CronJobStatus, Job, JobSpec, JobStatus};
+use k8s_openapi::api::batch::v1::{Job, JobSpec};
 use kube::{
     Api, Client, ResourceExt,
     api::ListParams,
@@ -147,7 +147,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
         .unwrap();
 
     // Flag if the config has changed since we last touched it. This is used in several places to determine if we should patch the object or not.
-    let config_changed = obj.status.as_ref().map_or(true, |s| !serde_json::to_string(&s.last_applied_config).unwrap_or_default().eq(&serde_json::to_string(&obj.spec).unwrap_or_default()));
+    let config_changed = obj.status.as_ref().is_none_or(|s| !serde_json::to_string(&s.last_applied_config).unwrap_or_default().eq(&serde_json::to_string(&obj.spec).unwrap_or_default()));
     
     // Acceptance checks
     let mut source_secret_okay = true;
@@ -159,8 +159,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
     let mut dest_image_okay = true;
 
     // Acceptance check for the source secret
-    if obj.spec.source.registry_login_secret.is_some() {
-        let secret_name = obj.spec.source.registry_login_secret.as_ref().unwrap();
+    if let Some(secret_name) = &obj.spec.source.registry_login_secret {
         match secrets.get(secret_name).await {
             Ok(secret) => {
                 println!("Source secret {} exists", secret_name);
@@ -179,8 +178,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
     }
 
     // Acceptance check for the destination secret
-    if obj.spec.destination.registry_login_secret.is_some() {
-        let secret_name = obj.spec.destination.registry_login_secret.as_ref().unwrap();
+    if let Some(secret_name) = &obj.spec.destination.registry_login_secret {
         match secrets.get(secret_name).await {
             Ok(secret) => {
                 println!("Destination secret {} exists", secret_name);
@@ -199,9 +197,9 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
     }
 
     // Acceptance check for the cron schedule
-    if obj.spec.cron_schedule.is_some() {
-        let schedule = obj.spec.cron_schedule.as_ref().unwrap();
-        if !Regex::new(r"^\s*\#?\s*(?:(?:(?'mins'[0-5]?\d)(?:[-,](?&mins))*)|\*)(?:/\d{1,2})?\s+(?:(?:(?'hours'(?:2[0-3]|[01]?\d))(?:[-,](?&hours))*)|\*)(?:/\d{1,2})?\s+(?:(?:(?'dmon'(?:3[01]|[12]?\d))(?:[-,](?&dmon))*)|\*)(?:/\d{1,2})?\s+(?:(?:(?'mon'(?:1[0-2]|[1-9]))(?:[-,](?&mon))*)|\*)(?:/\d{1,2})?\s+(?:(?:(?'dow'(?:[0-6]|\b(?:mon|tue|wed|thu|fri|sat|sun)\b))(?:[-,](?&dow))*)|\*)(?:/\d{1,2})?\s+.+$").unwrap().is_match(schedule) {
+    if let Some(schedule) = &obj.spec.cron_schedule {
+        // This regex is a bit of a guess since the official k8s api spec doesn't define the exact format. We presume it's the same as most other cron implementions.
+        if !Regex::new(r"^((((\d+,)+\d+|(\d+(/|-|#)\d+)|\d+L?|\*(/\d+)?|L(-\d+)?|\?|[A-Z]{3}(-[A-Z]{3})?) ?){5,7})$|(@(annually|yearly|monthly|weekly|daily|hourly|reboot))|(@every (\d+(ns|us|µs|ms|s|m|h))+)$").unwrap().is_match(schedule) {
             println!("Cron schedule {} is valid", schedule);
         } else {
             println!("Cron schedule {} is invalid", schedule);
@@ -244,15 +242,15 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
         }
     }
 
-    if accepted && obj.status.as_ref().map_or(false, |s| s.accepted == true) {
+    if accepted && obj.status.as_ref().is_some_and(|s| s.accepted) {
         println!("ImageSync {} is already accepted", obj.name_any());
-    } else if !accepted && obj.status.as_ref().map_or(false, |s| s.accepted == false) && !config_changed {
+    } else if !accepted && obj.status.as_ref().is_some_and(|s| !s.accepted) && !config_changed {
         println!("ImageSync {} is already rejected and hasn't changed", obj.name_any());
     } else {
         println!("Updating status for ImageSync {} to accepted={}", obj.name_any(), accepted);
         let mut patched_obj = obj.as_ref().clone();
         patched_obj.status = Some(imagesync::ImageSyncStatus {
-            accepted: accepted,
+            accepted,
             message: accepted_message,
             ready: false,
             last_applied_config: obj.spec.clone(),
@@ -289,7 +287,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
     // TODO: If the status is ready=false, but the job exists and is finished, check if the job was successful, if it was, set ready=true and requeue with a short wait.
     // If the job finished with an error, set ready=false and set a message to that effect. Then requeue with the long wait, as this is likely a configuration error.
     // TODO: If there is a cron schedule set, we must ALWAYS check the cronjob's config to ensure it matches both the spec and last_applied_spec. If any of these mismatch, remove the cronjob (and job if it exists) and requeue.
-    if joblist.items.len() == 0 {
+    if joblist.items.is_empty() {
         println!("Creating job for imagesync: {}", obj.name_any());
         let mut containers = Vec::<k8s_openapi::api::core::v1::Container>::new();
         let mut command: Vec<String> = Vec::<String>::new();
@@ -344,7 +342,7 @@ skopeo copy {preserve_digests} {all_architectures} {src_options} {dest_options} 
                         ..Default::default()
                     }),
                     spec: Some(k8s_openapi::api::core::v1::PodSpec {
-                        containers: containers,
+                        containers,
                         volumes: Some(vec![
                             k8s_openapi::api::core::v1::Volume {
                                 name: "creds-src".to_string(),
