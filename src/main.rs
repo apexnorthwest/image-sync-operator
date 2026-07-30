@@ -171,7 +171,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
                 }
             }
             Err(e) => {
-                println!("Source secret {} does not exist", secret_name);
+                println!("Source secret {} does not exist: {}", secret_name, e);
                 source_secret_okay = false;
                 source_secret_message = format!("Source secret {} does not exist", secret_name);
             }
@@ -191,7 +191,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
                 }
             }
             Err(e) => {
-                println!("Destination secret {} does not exist", secret_name);
+                println!("Destination secret {} does not exist: {}", secret_name, e);
                 dest_secret_okay = false;
                 dest_secret_message = format!("Destination secret {} does not exist", secret_name);
             }
@@ -223,11 +223,8 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
 
     // Determine if the ImageSync configuration is accepted and render the message accordingly
     let mut accepted = true;
-    let mut accepted_message = String::new();
-    if source_secret_okay && dest_secret_okay && cron_schedule_okay && source_image_okay && dest_image_okay {
-        accepted = true;
-        accepted_message = String::from("ImageSync configuration is valid");
-    } else {
+    let mut accepted_message = String::from("ImageSync configuration is valid");
+    if !source_secret_okay || !dest_secret_okay || !cron_schedule_okay || !source_image_okay || !dest_image_okay {
         accepted = false;
         accepted_message = String::from("ImageSync configuration is invalid: ");
         if !source_secret_okay {
