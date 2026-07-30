@@ -6,8 +6,12 @@ on:
     branches:
       - dev
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  docker:
+  docker-build:
     runs-on: ubuntu-latest
     steps:
       - name: Login to GitHub Container Registry

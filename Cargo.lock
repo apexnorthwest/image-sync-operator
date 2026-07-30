@@ -766,6 +766,7 @@ dependencies = [
  "kube",
  "kube-lease-manager",
  "once_cell",
+ "regex",
  "schemars",
  "serde",
  "serde_json",
