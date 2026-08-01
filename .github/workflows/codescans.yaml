@@ -21,6 +21,7 @@ jobs:
     permissions:
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
+      contents: read
     with:
       scan-args: |-
         -r
@@ -32,6 +33,7 @@ jobs:
     permissions:
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
+      contents: read
     with:
       scan-args: |-
         -r
@@ -42,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.repository.default_branch == github.ref_name && (github.event_name == 'push' || github.event_name == 'schedule')
     permissions:
+      contents: read
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
       # Needed to publish results and get a badge (see publish_results below).
@@ -72,6 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     permissions:
+      contents: read
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
     steps:
@@ -99,6 +103,7 @@ jobs:
     name: Run rust-clippy analyzing
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
     steps:
