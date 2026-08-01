@@ -20,7 +20,12 @@ This image will be packed as a static binary in a scratch container to prevent
 exposure surface and minimize the final image size.
 
 ## Rule 3: Vulnerability Scanning
-All releases must pass [trivy](https://trivy.dev/) scans before they will be published. 
+Multiple vulnerability and code quality scanners are in use on this project.
+Alerts from any of them should be considered mandatory prior to merging a pull
+request against the project. It is expected that you as a contributor will have
+compiled the project container image and run the test suite prior to opening the
+PR.
+
 Should you discover a critical vulnerability, you are encouraged to report it via
 <admin@apexnorthwest.com>. Should the maintainers fail to respond within 30 days,
 you should open an issue on this repo. If an unpatched vulnerability is found in a
