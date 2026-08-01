@@ -1,12 +1,16 @@
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::CustomResource;
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
-use chrono::{DateTime, Utc};
-use chrono::serde::ts_seconds_option;
+use serde::{Deserialize, Serialize};
 
 #[allow(non_snake_case)]
 #[derive(CustomResource, Deserialize, Serialize, Clone, Debug, JsonSchema)]
-#[kube(kind = "ImageSync", group = "imagesync.apexnw.dev", version = "v1alpha1", namespaced)]
+#[kube(
+    kind = "ImageSync",
+    group = "imagesync.apexnw.dev",
+    version = "v1alpha1",
+    namespaced
+)]
 #[kube(status = "ImageSyncStatus")]
 pub struct ImageSyncSpec {
     pub source: ImageSyncTarget,
@@ -17,14 +21,21 @@ pub struct ImageSyncSpec {
     pub all_architectures: Option<bool>,
     #[serde(rename = "preserveDigests", skip_serializing_if = "Option::is_none")]
     pub preserve_digests: Option<bool>,
+    #[serde(
+        rename = "extraSkopeoArguments",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub extra_skopeo_arguments: Option<String>,
 }
-
 
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct ImageSyncTarget {
     pub image: String,
-    #[serde(rename = "registryLoginSecret", skip_serializing_if = "Option::is_none")]
-    pub registry_login_secret: Option<String>
+    #[serde(
+        rename = "registryLoginSecret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub registry_login_secret: Option<String>,
 }
 
 #[allow(non_snake_case)]
@@ -34,7 +45,7 @@ pub struct ImageSyncStatus {
     pub ready: bool,
     #[serde(rename = "lastAppliedConfig")]
     pub last_applied_config: ImageSyncSpec,
-    #[serde(rename = "lastCompletionTime", serialize_with = "ts_seconds_option::serialize", deserialize_with = "ts_seconds_option::deserialize")]
-    pub last_completion_time: Option<DateTime<Utc>>,
+    #[serde(rename = "lastCompletionTime")]
+    pub last_completion_time: Option<Time>,
     pub message: String,
 }

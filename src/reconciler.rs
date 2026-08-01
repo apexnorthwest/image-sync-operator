@@ -1,11 +1,102 @@
-// Utility functions for the reconciler loop
+/*
+Utility functions for the reconciler loop.
+*/
 
 use crate::imagesync::{ImageSync, ImageSyncStatus};
-use kube::{Api, Client};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::api::{Patch, PatchParams};
+use kube::{Api, Client};
 use regex::Regex;
 
-pub async fn acceptance_checks(obj: &ImageSync, secrets: &Api<k8s_openapi::api::core::v1::Secret>) -> Result<(bool, bool, String), Box<dyn std::error::Error>> {
+// Returns true if the spec has changed or has never been evaluated.
+pub async fn has_config_changed(obj: &ImageSync) -> Result<bool, Box<dyn std::error::Error>> {
+    let spec_json = serde_json::to_value(obj.spec.clone())?;
+    if let Some(status) = &obj.status
+        && let Some(last_applied_config) = Some(status.clone().last_applied_config)
+    {
+        let last_applied_config_json = serde_json::to_value(last_applied_config.clone())?;
+        if last_applied_config_json.eq(&spec_json) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+// Takes a new set of status values and updates the CR in the cluster.
+pub async fn update_status(
+    obj: ImageSync,
+    accepted: bool,
+    ready: bool,
+    accepted_message: String,
+    last_completion_time: Option<Time>,
+    client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!(
+        "ImageSync {} config has changed, setting ready=false",
+        obj.metadata.name.clone().unwrap()
+    );
+    let imagesyncs: Api<ImageSync> = Api::namespaced(
+        client.clone(),
+        obj.metadata.namespace.clone().unwrap().as_str(),
+    );
+    let mut patched_obj = obj.clone();
+    patched_obj.status = Some(ImageSyncStatus {
+        accepted,
+        message: accepted_message,
+        ready,
+        last_applied_config: obj.spec.clone(),
+        last_completion_time,
+    });
+    let patch_params = PatchParams::apply("image-sync-operator").force();
+    let patch = Patch::Apply(&patched_obj);
+    match imagesyncs
+        .patch_status(&obj.metadata.name.clone().unwrap(), &patch_params, &patch)
+        .await
+    {
+        Ok(_) => {
+            println!(
+                "Successfully updated status for ImageSync {}",
+                obj.metadata.name.clone().unwrap()
+            );
+            Ok(())
+        }
+        Err(e) => {
+            println!(
+                "Failed to update status for ImageSync {}: {}",
+                obj.metadata.name.clone().unwrap(),
+                e
+            );
+            Err(Box::new(e))
+        }
+    }
+}
+
+// Resets the status of the CR due to a spec change
+pub async fn reset_to_not_accepted(
+    obj: &ImageSync,
+    client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!(
+        "Resetting ImageSync {} to not accepted",
+        obj.metadata.name.clone().unwrap()
+    );
+    update_status(
+        obj.clone(),
+        false,
+        false,
+        String::from("ImageSync configuration has changed"),
+        None,
+        client,
+    )
+    .await?;
+    Ok(())
+}
+
+// Run acceptance checks on the CR and update the status as appropriate. Returns True if accepted.
+pub async fn acceptance_checks(
+    obj: &ImageSync,
+    client: &Client,
+) -> Result<bool, Box<dyn std::error::Error>> {
     let mut source_secret_okay = true;
     let mut source_secret_message = String::new();
     let mut dest_secret_okay = true;
@@ -13,7 +104,11 @@ pub async fn acceptance_checks(obj: &ImageSync, secrets: &Api<k8s_openapi::api::
     let mut cron_schedule_okay = true;
     let mut source_image_okay = true;
     let mut dest_image_okay = true;
-    let mut fast_requeue = false;
+
+    let secrets = Api::<k8s_openapi::api::core::v1::Secret>::namespaced(
+        client.clone(),
+        obj.metadata.namespace.as_ref().unwrap().as_str(),
+    );
 
     // Acceptance check for the source secret
     if let Some(secret_name) = &obj.spec.source.registry_login_secret {
@@ -21,10 +116,15 @@ pub async fn acceptance_checks(obj: &ImageSync, secrets: &Api<k8s_openapi::api::
             Ok(secret) => {
                 println!("Source secret {} exists", secret_name);
                 if secret.type_ != Some(String::from("kubernetes.io/dockerconfigjson")) {
-                    println!("Source secret {} is not of type kubernetes.io/dockerconfigjson", secret_name);
+                    println!(
+                        "Source secret {} is not of type kubernetes.io/dockerconfigjson",
+                        secret_name
+                    );
                     source_secret_okay = false;
-                    source_secret_message = format!("Source secret {} is not of type kubernetes.io/dockerconfigjson", secret_name);
-                    fast_requeue = true;
+                    source_secret_message = format!(
+                        "Source secret {} is not of type kubernetes.io/dockerconfigjson",
+                        secret_name
+                    );
                 }
             }
             Err(e) => {
@@ -41,10 +141,15 @@ pub async fn acceptance_checks(obj: &ImageSync, secrets: &Api<k8s_openapi::api::
             Ok(secret) => {
                 println!("Destination secret {} exists", secret_name);
                 if secret.type_ != Some(String::from("kubernetes.io/dockerconfigjson")) {
-                    println!("Destination secret {} is not of type kubernetes.io/dockerconfigjson", secret_name);
+                    println!(
+                        "Destination secret {} is not of type kubernetes.io/dockerconfigjson",
+                        secret_name
+                    );
                     dest_secret_okay = false;
-                    dest_secret_message = format!("Destination secret {} is not of type kubernetes.io/dockerconfigjson", secret_name);
-                    fast_requeue = true;
+                    dest_secret_message = format!(
+                        "Destination secret {} is not of type kubernetes.io/dockerconfigjson",
+                        secret_name
+                    );
                 }
             }
             Err(e) => {
@@ -81,14 +186,22 @@ pub async fn acceptance_checks(obj: &ImageSync, secrets: &Api<k8s_openapi::api::
     // Determine if the ImageSync configuration is accepted and render the message accordingly
     let mut accepted = true;
     let mut accepted_message = String::from("ImageSync configuration is valid");
-    if !source_secret_okay || !dest_secret_okay || !cron_schedule_okay || !source_image_okay || !dest_image_okay {
+    if !source_secret_okay
+        || !dest_secret_okay
+        || !cron_schedule_okay
+        || !source_image_okay
+        || !dest_image_okay
+    {
         accepted = false;
         accepted_message = String::from("ImageSync configuration is invalid: ");
         if !source_secret_okay {
             accepted_message.push_str(&format!("Source secret error: {}. ", source_secret_message));
         }
         if !dest_secret_okay {
-            accepted_message.push_str(&format!("Destination secret error: {}. ", dest_secret_message));
+            accepted_message.push_str(&format!(
+                "Destination secret error: {}. ",
+                dest_secret_message
+            ));
         }
         if !cron_schedule_okay {
             accepted_message.push_str("Cron schedule is invalid. ");
@@ -100,30 +213,7 @@ pub async fn acceptance_checks(obj: &ImageSync, secrets: &Api<k8s_openapi::api::
             accepted_message.push_str("Destination image URL is invalid. ");
         }
     }
-    return Ok((accepted, fast_requeue, accepted_message));
-}
 
-pub async fn update_status(obj: ImageSync, accepted: bool, accepted_message: String, client: &Client) -> Result<(), Box<dyn std::error::Error>> {
-    println!("ImageSync {} config has changed, setting ready=false", obj.name_any());
-    let imagesyncs: Api<ImageSync> = Api::namespaced(client.clone(), &obj.namespace().unwrap());
-    let mut patched_obj = obj.clone();
-    patched_obj.status = Some(ImageSyncStatus {
-        accepted,
-        message: accepted_message,
-        ready: false,
-        last_applied_config: obj.spec.clone(),
-        last_completion_time: None,
-    });
-    let patch_params = PatchParams::apply("image-sync-operator").force();
-    let patch = Patch::Apply(&patched_obj);
-    match imagesyncs.patch_status(&obj.name_any(), &patch_params, &patch).await {
-        Ok(_) => {
-            println!("Successfully updated status for ImageSync {}", obj.name_any());
-            Ok(())
-        }
-        Err(e) => {
-            println!("Failed to update status for ImageSync {}: {}", obj.name_any(), e);
-            Err(Box::new(e))
-        }
-    }
+    update_status(obj.clone(), accepted, false, accepted_message, None, client).await?;
+    Ok(accepted)
 }

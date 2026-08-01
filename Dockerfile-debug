@@ -1,13 +1,18 @@
-FROM docker.io/library/rust:1 AS debug
+FROM docker.io/library/rust:1.97-slim AS build
 
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
+# Run the build against a fake main.rs to pack all dependencies. This makes incremental builds much faster
 RUN mkdir -p src && echo 'fn main() { println!("hello world")}' > src/main.rs &&\
-    RUSTFLAGS="-D warnings -D nonstandard-style -D let-underscore" cargo build
-RUN rustup component add clippy &&\
-    cargo clippy -- --no-deps -D warnings -D nonstandard-style -D let-underscore
+    CARGO_BUILD_WARNINGS=deny cargo build
+
+# Copy the real source code and build
 COPY src src
-RUN cargo clippy -- --no-deps -D warnings -D nonstandard-style -D let-underscore &&\
-    RUSTFLAGS="-D warnings -D nonstandard-style -D let-underscore" cargo build &&\
+RUN CARGO_BUILD_WARNINGS=deny cargo build &&\
     cp target/debug/image-sync-operator /image-sync-operator
+
+# To keep the debug image from being huge, we copy the binary into a slim debian image
+FROM docker.io/library/debian:12-slim AS debug
+COPY --from=build /image-sync-operator /image-sync-operator
+USER 9999:9999
 CMD ["/image-sync-operator"]
