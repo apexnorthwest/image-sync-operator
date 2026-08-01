@@ -1,10 +1,10 @@
 ---
-name: Main Branch Build
+name: Release Build
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*.*.*'
 
 permissions:
   contents: read
@@ -27,23 +27,38 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+      
+      - name: Generate tags
+        uses: docker/metadata-action@v6.2.0
+        id: meta
+        with:
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
 
-      - name: Build and push
+      - name: Build Only
         uses: docker/build-push-action@v7
         with:
           platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/apexnorthwest/image-sync-operator:dev
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
 
       - name: Run Trivy vulnerability scanner
+        id: scan
         uses: aquasecurity/trivy-action@7b7aa264d83dc58691451798b4d117d53d21edfe
         with:
-          image-ref: 'ghcr.io/apexnorthwest/image-sync-operator:dev'
+          image-ref: 'ghcr.io/apexnorthwest/image-sync-operator:latest'
           format: 'template'
           template: '@/contrib/sarif.tpl'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
 
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+      - name: Push release image to GitHub Container Registry
+        uses: docker/build-push-action@v7
+        if: steps.scan.outputs.vulnerabilities == '0'
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

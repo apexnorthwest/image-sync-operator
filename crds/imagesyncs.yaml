@@ -53,7 +53,6 @@ spec:
                 cronSchedule:
                   type: string
                   description: "Cron schedule for periodic syncs (default is unset, meaning only sync once)"
-                  pattern: "^([0-5]?\\d|\\*)\\s+([0-5]?\\d|\\*)\\s+([01]?\\d|2[0-3]|\\*)\\s+([1-9]|[12]\\d|3[01]|\\*)\\s+([1-9]|1[012]|\\*)$"
                 allArchitectures:
                   type: boolean
                   description: "If true, sync all architectures of the image manifest list. If false, only sync the architecture the operator is running on."
@@ -62,6 +61,9 @@ spec:
                   type: boolean
                   description: "If true, preserve the digests of the images when syncing. If false, the operator may re-push images with new digests. Notably, this option will cause jobs to fail on multi-arch images when allArchitectures is false, as image tags are a hash of all sub-manifests and will not match the source image tag."
                   default: false
+                extraSkopeoArguments:
+                  type: string
+                  description: "Extra arguments to pass to skopeo when syncing images. For example, you can use this to add '--dest-compress-format zstd' or '--format oci'"
             status:
               type: object
               required:

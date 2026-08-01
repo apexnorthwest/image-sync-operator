@@ -13,7 +13,7 @@ TODO: Write an actual user guide
 TODO: write some how-to build guides
 
 ## Contributing
-You may find our [code of conduct](CODE_OF_CONDUCT) and [contributor guidelines](CONTRIBUTING)
+You may find our [code of conduct](CODE_OF_CONDUCT.md) and [contributor guidelines](CONTRIBUTING.md)
 in this repo. We expect everyone to follow the guidelines and policies to ensure a positive,
 productive, and enjoyable experience for all involved.
 
