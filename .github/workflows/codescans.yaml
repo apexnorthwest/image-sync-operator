@@ -48,7 +48,6 @@ jobs:
     permissions:
       contents: read
       actions: read
-      metadata: read
       checks: read
       issues: read
       pull-requests: read
@@ -86,7 +85,6 @@ jobs:
     permissions:
       contents: read
       actions: read
-      metadata: read
       checks: read
       issues: read
       pull-requests: read
