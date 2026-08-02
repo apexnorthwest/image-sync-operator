@@ -4,7 +4,7 @@ image-sync-operator is a Kubernetes operator that synchronizes container images 
 Installing the operator is typically done via helm by pulling the chart from the public oci repository.
 You can also find the charts in the legacy helm registry format [here](charts/).
 
-Crate documentation for contributors can be found [here](doc/image-sync-operator/)
+Crate documentation for contributors can be found [here](doc/image_sync_operator/)
 
 To install the operator in single-namespace mode with the default settings you would do the following:
 ```sh
