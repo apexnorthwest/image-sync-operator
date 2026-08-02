@@ -22,6 +22,7 @@ jobs:
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
       contents: read
+      actions: read
     with:
       scan-args: |-
         -r
@@ -34,6 +35,7 @@ jobs:
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
       contents: read
+      actions: read
     with:
       scan-args: |-
         -r
