@@ -1,4 +1,4 @@
-FROM docker.io/library/rust:1.97-slim AS build
+FROM docker.io/library/rust@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c AS build # 1.97-slim
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src src

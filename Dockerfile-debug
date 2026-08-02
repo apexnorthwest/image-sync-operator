@@ -1,4 +1,4 @@
-FROM docker.io/library/rust:1.97-slim AS build
+FROM docker.io/library/rust@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c AS build # 1.97-slim
 
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
@@ -12,7 +12,7 @@ RUN CARGO_BUILD_WARNINGS=deny cargo build &&\
     cp target/debug/image-sync-operator /image-sync-operator
 
 # To keep the debug image from being huge, we copy the binary into a slim debian image
-FROM docker.io/library/debian:12-slim AS debug
+FROM docker.io/library/debian@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818 AS debug # 12-slim
 COPY --from=build /image-sync-operator /image-sync-operator
 USER 9999:9999
 CMD ["/image-sync-operator"]
