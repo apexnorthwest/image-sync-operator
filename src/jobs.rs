@@ -1,9 +1,7 @@
 // Copyright 2026 Apex Northwest
 // SPDX-License-Identifier: Apache-2.0
-/*
-Job management for ImageSync operator.
-This only controls the one-shot and initial jobs.
-*/
+//! Job management for ImageSync operator.
+//! This only controls the one-shot and initial jobs.
 
 use crate::config::SkopeoConfig;
 use crate::imagesync::ImageSync;
@@ -15,7 +13,7 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{Api, Client};
 use std::collections::BTreeMap;
 
-// Delete the given job.
+/// Delete the given job from the Kubernetes cluster.
 pub async fn delete_job(job: &Job, client: &Client) -> Result<(), Box<dyn std::error::Error>> {
     let jobs: Api<Job> = Api::namespaced(client.clone(), job.metadata.namespace.as_ref().unwrap());
     match jobs
@@ -40,7 +38,9 @@ pub async fn delete_job(job: &Job, client: &Client) -> Result<(), Box<dyn std::e
     }
 }
 
-// Get the job associated with the given ImageSync CR, if it exists.
+/// Get the job associated with the given ImageSync CR, if it exists.
+/// 
+/// Returns a Job object if it finds one, None if it does not, or Errors out if there are more than one job. This should never happen unless something has gone quite wrong.
 pub async fn get_job_for_imagesync(
     obj: &ImageSync,
     client: &Client,
@@ -75,12 +75,15 @@ pub async fn get_job_for_imagesync(
     }
 }
 
-// Create a one-shot sync Job for the given CR.
+/// Create a one-shot sync Job for the given CR.
+/// 
+/// Because we can get all the information we need from the CR, we only pass the CR and the global SkopeoConfig to this function.
 pub async fn create_job(
     obj: &ImageSync,
     config: &SkopeoConfig,
     client: &Client,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let debug = std::env::var("DEBUG").is_ok();
     let jobs: Api<Job> = Api::namespaced(
         client.clone(),
         obj.metadata.namespace.as_ref().unwrap().as_str(),
@@ -101,7 +104,8 @@ pub async fn create_job(
     command.push(r#"cat >> /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem <<EOF
 {ca_trust_bundle}
 EOF
-skopeo copy {preserve_digests} {all_architectures} {src_options} {dest_options} {extra_arguments} docker://{src} docker://{dest}"#
+skopeo copy {debug} {preserve_digests} {all_architectures} {src_options} {dest_options} {extra_arguments} docker://{src} docker://{dest}"#
+                    .replace("{debug}", if debug { "--debug" } else { "" })
                     .replace("{ca_trust_bundle}", config.ca_trust_bundle.as_ref().map_or("", |s| s))
                     .replace("{preserve_digests}", if obj.spec.preserve_digests.unwrap_or(false) { "--preserve-digests" } else { "" })
                     .replace("{all_architectures}", if obj.spec.all_architectures.unwrap_or(false) { "--all" } else { "" })
@@ -186,7 +190,7 @@ skopeo copy {preserve_digests} {all_architectures} {src_options} {dest_options} 
     Ok(())
 }
 
-// Check if the given job has finished running or has failed.
+/// Check if the given job has finished running or has failed. Returns true if the job has finished or failed, false if the job's status is pending or running.
 pub async fn is_job_complete(job: &Job) -> bool {
     if let Some(status) = &job.status
         && let Some(conditions) = &status.conditions
@@ -200,7 +204,7 @@ pub async fn is_job_complete(job: &Job) -> bool {
     false
 }
 
-// Check if the job has failed.
+/// Check if the job has failed. Returns true if the Failed condition is present and true, false otherwise.
 pub async fn is_job_failed(job: &Job) -> bool {
     if let Some(status) = &job.status
         && let Some(conditions) = &status.conditions

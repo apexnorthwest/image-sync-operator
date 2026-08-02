@@ -33,6 +33,8 @@ spec:
           env:
             - name: DEBUG
               value: "true"
+            - name: RUST_BACKTRACE
+              value: "full"
           {{- end }}
       volumes:
         - name: config-volume

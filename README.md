@@ -15,13 +15,13 @@ This project is still a work in progress, and should be considered pre-alpha. Un
 notice is removed, we do not suggest using this code for anything other than experimental
 purposes.
 
-TODO: Write an actual user guide
+Usage guide can be found in the [docs](https://apexnorthwest.github.io/image-sync-operator)
 
 ## Building
-TODO: write some how-to build guides
+Info on how to build the code yourself can be found in the [Contributor Guide](CONTRIBUTING.md)
 
 ## Bug Reports and Feature Requests
-We welcome all feedback and bug reports. All such reports and requests should be created in the Issues on this repository.
+We welcome all feedback and bug reports. All such reports and requests should be created in the Issues on this repository. At all times you should follow the [code of conduct](CODE_OF_CONDUCT.md).
 
 You should include the following information in all bug reports or support requests:
 - Version of the operator image you're using (hash or tag)
