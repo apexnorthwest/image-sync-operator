@@ -48,6 +48,12 @@ jobs:
     permissions:
       contents: read
       actions: read
+      metadata: read
+      checks: read
+      issues: read
+      pull-requests: read
+      statuses: read
+      attestations: read
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
       # Needed to publish results and get a badge (see publish_results below).
@@ -80,6 +86,12 @@ jobs:
     permissions:
       contents: read
       actions: read
+      metadata: read
+      checks: read
+      issues: read
+      pull-requests: read
+      statuses: read
+      attestations: read
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
     steps:
