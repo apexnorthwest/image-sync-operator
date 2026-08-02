@@ -1,0 +1,101 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="image-sync-operator is a Kubernetes operator that synchronizes container images between registries based on the ImageSync custom resource definition (CRD)."><title>image_sync_operator - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="image_sync_operator" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate image_sync_operator</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../image_sync_operator/index.html">image_<wbr>sync_<wbr>operator</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#modules">Crate Items</a></h3><ul class="block"><li><a href="#modules" title="Modules">Modules</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#statics" title="Statics">Statics</a></li><li><a href="#functions" title="Functions">Functions</a></li><li><a href="#types" title="Type Aliases">Type Aliases</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1>Crate <span>image_<wbr>sync_<wbr>operator</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/image_sync_operator/main.rs.html#3-382">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>image-sync-operator is a Kubernetes operator that synchronizes container images between registries based on the ImageSync custom resource definition (CRD).</p>
+<p>Installing the operator is typically done via helm by pulling the chart from the public oci repository.
+You can also find the charts in the legacy helm registry format <a href="https://apexnorthwest.github.io/image-sync-operator/charts/">here</a>.</p>
+<p>To install the operator in single-namespace mode with the default settings you would do the following:</p>
+<div class="example-wrap"><pre class="language-sh"><code>helm repo add apexnw oci://ghcr.io/apexnorthwest/charts
+helm install image-sync-operator apexnw/image-sync-operator -n image-sync-operator --create-namespace</code></pre></div>
+<p>To fully customize the configuration you would pass a values.yaml files like so:</p>
+<div class="example-wrap"><pre class="language-yaml"><code>---
+# Settings for the operator itself. This is the container that runs the operator code and watches for ImageSync CRs.
+operator:
+  # Image url to pull from
+  image: 
+    repository: &quot;ghcr.io/apexnorthwest/image-sync-operator&quot;
+    tag: &quot;0.1.0&quot;
+    pullPolicy: &quot;IfNotPresent&quot;
+  # Enable for debug logging. This is not recommended for production use but if you even need to open an issue
+  # on the project then we will expect you to provide logs with this enabled.
+  debug: false
+service_account:
+  # Should this chart create a service account?
+  # If false, the service account named below must already exist
+  create: true
+  # Name of the service account to use/create
+  # Defaults to release name if not set
+  name: &quot;&quot;
+# Settings related to the skopeo image used by the operator
+# Technically, any image that contains skopeo can be used, but we prefer the official one
+# Notably, the ca trust must be in /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem, so
+# if you use an image based on a different OS, it&#39;s likely it will have tls problems.
+skopeo:
+  # Image url to pull from
+  image:
+    repository: &quot;quay.io/skopeo/stable&quot;
+    tag: &quot;latest&quot;
+    pullPolicy: &quot;IfNotPresent&quot;
+  # Optional CA trust bundle to use when verifying TLS connections to registries
+  # This should be a PEM encoded bundle of CA certificates, and will be appended
+  # to the system CA trust bundle in the skopeo container. This is generally mandatory when
+  # working with private, authenticated registries.
+  ca_trust_bundle: |-
+    -----BEGIN CERTIFICATE-----
+    ***********omitted***********
+    -----END CERTIFICATE-----
+# Settings related to the operator&#39;s access
+rbac:
+  # Should this chart create the cluster role `image-sync-operator`?
+  # This must be set to true if cluster_scoped is true, otherwise it is optional.
+  create_cluster_role: false
+  # Will this operator need to be cluster scoped?
+  # If true, the operator will watch all namespaces and require cluster role permissions.
+  cluster_scoped: false
+  # When not in cluster scoped mode, which namespaces should the operator watch?
+  # If empty, the operator will watch the namespace it is deployed in only.
+  # This will be ignored if cluster_scoped is true.
+  # The operator service account will need to have a rolebinding in these namespaces to be able to watch for ImageSync CRs.
+  # The Role can be copied from the install namespace, or if create_cluster_role is true then you can bind that cluster role into the namespace.
+  watched_namespaces:
+    - &quot;image-sync-operator&quot;
+    - &quot;default&quot;
+    - &quot;some-other-application&quot;</code></pre></div>
+<p>You would then create ImageSync CRs in that same namespace (as in this example we’ve installed the operator in restricted mode, as is the default)</p>
+<p>The following is an example of an ImageSync:</p>
+<div class="example-wrap"><pre class="language-yaml"><code>---
+apiVersion: imagesync.apexnw.dev/v1alpha1
+kind: ImageSync
+metadata:
+  name: alpine-latest
+  namespace: image-sync-operator
+spec:
+  source:
+    # Full URI of the source image as would be passed to skopeo (minus the docker:// prefix, which is presumed)
+    # Note: You cannot use docker short names for images. You must use full docker.io paths, as skopeo cannot know what registry to use for short names. This applies to both source and dest.
+    # This can also be an @ hash reference. Destination however, cannot be as you must tag the pushed image to something.
+    image: &quot;docker.io/library/alpine:latest&quot;
+    # Optional: The name of a Secret in the same namespace of type kubernetes.io/dockerconfigjson used to authenticate to the source registry.
+    registryLoginSecret: &quot;dockerhub&quot;
+  destination:
+    # Full URI of the destination image as would be passed to skopeo (minus the docker:// prefix, which is presumed)
+    image: &quot;my-private-registry.example.com/library/alpine:latest&quot;
+    # Optional: The name of a Secret in the same namespace of type kubernetes.io/dockerconfigjson used to authenticate to the destination registry.
+    registryLoginSecret: &quot;private-registry&quot;
+  # Optional: If you want to rerun the sync on a schedule after the initial sync. Uses CronJob format. If unset, the sync only runs once. 
+  cronSchedule: &quot;*/15 * * * *&quot;
+  # Optional: If true, all architectures will be copied. If false, only the architecture of the operator pod will be copied. Defaults to false. This is the same as passing --all to skopeo.
+  allArchitectures: true
+  # Optional: If true, the destination image will be tagged with the digest of the source image. If false, the destination image will be tagged with the tag of the source image. Defaults to false. This is the same as passing --preserve-digests to skopeo
+  # Notably, if this is set to true, and allArchitectures is set to false, multi-arch images will fail to copy and the sync will fail.
+  preserveDigests: true
+  # Optional: If you want to pass extra arguments to skopeo, you can do so here. This is a string that will be split on whitespace and passed to skopeo as-is. For example, if you want to pass --insecure-policy to skopeo, you would set this to &quot;--insecure-policy&quot;.
+  # Note that this is not a list of arguments, but a single string that will be split on whitespace. If it needs to have spaces in an argument (which it shouldn&#39;t), you will need to use single quotes inside the string.
+  extraSkopeoArguments: &quot;&quot;</code></pre></div>
+<p>This project is not meant to be used as a library or installed via cargo. As a result, all contained functions and modules documented within this site are
+written for the use of contributors and not users of the operator.</p>
+</div></details><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="config/index.html" title="mod image_sync_operator::config">config</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dd>Config represents the yaml config file consumed by the operator at startup from /config/config.yaml.
+The main loop uses the read_config_file() function to read the config file and return a Config struct.</dd><dt><a class="mod" href="cronjobs/index.html" title="mod image_sync_operator::cronjobs">cronjobs</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dd>This module contains the helper functions to manage the CronJobs used by scheduled image syncs.</dd><dt><a class="mod" href="imagesync/index.html" title="mod image_sync_operator::imagesync">imagesync</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dd>This module contains the ImageSync object type and all configuration required to make serde behave.</dd><dt><a class="mod" href="jobs/index.html" title="mod image_sync_operator::jobs">jobs</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dd>Job management for ImageSync operator.
+This only controls the one-shot and initial jobs.</dd><dt><a class="mod" href="reconciler/index.html" title="mod image_sync_operator::reconciler">reconciler</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.Error.html" title="enum image_sync_operator::Error">Error</a></dt><dd>Catchall error type for the operator.</dd></dl><h2 id="statics" class="section-header">Statics<a href="#statics" class="anchor">§</a></h2><dl class="item-table"><dt><a class="static" href="static.CONFIG.html" title="static image_sync_operator::CONFIG">CONFIG</a></dt><dd>Global config object. This is ready lazily from /config/config.yaml and is used to set global config options in the operator.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.error_policy.html" title="fn image_sync_operator::error_policy">error_<wbr>policy</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dd>This function is called when the reconciler encounters an error. In this case, we simply retry the reconcile after 30 seconds.
+Because the reconciler is idempotent, this is safe to do. The error is logged by the controller runtime.</dd><dt><a class="fn" href="fn.main.html" title="fn image_sync_operator::main">main</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dd>Entrypoint for the operator. This main function sets up the leader election, watches for ImageSync CRD changes,
+and calls the reconciler when a change is detected. It uses tokio as the async runtime and is not meant to be called directly.</dd><dt><a class="fn" href="fn.reconcile.html" title="fn image_sync_operator::reconcile">reconcile</a><span title="Restricted Visibility">&nbsp;🔒</span> </dt><dd>This reconcile funtion is the main logical driver of the operator. It is called whenever an event is generated related to an ImageSync CRD.
+This runs as a single listener in global or single-namespace mode. In multi-namespace mode it will run as a listener on each namespace it monitors.
+Notably, this function usually only performs a single action when called, even if multiple actions are called for. This is because we want the function
+to be as idempotent as possible. It also ensures that no matter what state the ImageSync is in, it will always progress towards the correct state.</dd></dl><h2 id="types" class="section-header">Type Aliases<a href="#types" class="anchor">§</a></h2><dl class="item-table"><dt><a class="type" href="type.Result.html" title="type image_sync_operator::Result">Result</a></dt></dl></section></div></main></body></html>

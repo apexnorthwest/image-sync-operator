@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["create_job","delete_job","get_job_for_imagesync","is_job_complete","is_job_failed"]};

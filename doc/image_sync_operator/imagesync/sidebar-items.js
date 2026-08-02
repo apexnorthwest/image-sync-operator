@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["ImageSync","ImageSyncSpec","ImageSyncStatus","ImageSyncTarget"]};

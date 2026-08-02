@@ -1,3 +1,13 @@
 apiVersion: v1
-entries: {}
-generated: "2026-08-02T01:43:33.506756643-06:00"
+entries:
+  image-sync-operator:
+  - apiVersion: v2
+    appVersion: 0.1.0
+    created: "2026-08-02T13:24:19.175671722-06:00"
+    description: A Helm chart for the image sync operator
+    digest: 57c19e281b9b3e375f1630f9a1f50b6d8a2c4181c240ac757a9d956456fd733d
+    name: image-sync-operator
+    urls:
+    - https://apexnorthwest.github.io/image-sync-operator/charts/image-sync-operator-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-08-02T13:24:19.173984655-06:00"

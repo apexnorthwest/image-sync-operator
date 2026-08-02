@@ -1,0 +1,9 @@
+(function() {
+    const implementors = Object.fromEntries([["image_sync_operator",[["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.229/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"image_sync_operator/imagesync/struct.ImageSync.html\" title=\"struct image_sync_operator::imagesync::ImageSync\">ImageSync</a>",0],["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.229/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"image_sync_operator/imagesync/struct.ImageSyncSpec.html\" title=\"struct image_sync_operator::imagesync::ImageSyncSpec\">ImageSyncSpec</a>",0],["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.229/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"image_sync_operator/imagesync/struct.ImageSyncStatus.html\" title=\"struct image_sync_operator::imagesync::ImageSyncStatus\">ImageSyncStatus</a>",0],["impl <a class=\"trait\" href=\"https://docs.rs/serde_core/1.0.229/serde_core/ser/trait.Serialize.html\" title=\"trait serde_core::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"image_sync_operator/imagesync/struct.ImageSyncTarget.html\" title=\"struct image_sync_operator::imagesync::ImageSyncTarget\">ImageSyncTarget</a>",0]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":59,"fragment_lengths":[1373]}

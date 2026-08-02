@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["acceptance_checks","has_config_changed","reset_to_not_accepted","update_status"]};
