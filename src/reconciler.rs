@@ -1,3 +1,5 @@
+// Copyright 2026 Apex Northwest
+// SPDX-License-Identifier: Apache-2.0
 /*
 Utility functions for the reconciler loop.
 */

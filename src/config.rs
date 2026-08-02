@@ -1,3 +1,5 @@
+// Copyright 2026 Apex Northwest
+// SPDX-License-Identifier: Apache-2.0
 /*
 Config represents the yaml config file consumed by the operator at startup from /config/config.yaml.
 Use the read_config_file() function to read the config file and return a Config struct.

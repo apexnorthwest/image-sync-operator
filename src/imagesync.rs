@@ -1,3 +1,8 @@
+// Copyright 2026 Apex Northwest
+// SPDX-License-Identifier: Apache-2.0
+/*
+This file contains the ImageSync object type and all configuration required to make serde behave.
+*/
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::CustomResource;
 use schemars::JsonSchema;

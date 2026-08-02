@@ -1,3 +1,5 @@
+// Copyright 2026 Apex Northwest
+// SPDX-License-Identifier: Apache-2.0
 /*
 Job management for ImageSync operator.
 This only controls the one-shot and initial jobs.
