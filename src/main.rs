@@ -370,6 +370,33 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
         return Ok(Action::requeue(Duration::from_secs(5)));
     }
 
+    // Manage CronJobs when needed
+    if obj.spec.cron_schedule.is_some() {
+        let cronjob = cronjobs::get_cronjob_for_imagesync(&obj, &client)
+            .await
+            .unwrap();
+        if cronjob.is_none() {
+            cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client)
+                .await
+                .unwrap();
+            // Fast requeue to watch the cronjob status
+            return Ok(Action::requeue(Duration::from_secs(5)));
+        } else {
+            // CronJob exists, assert that the spec is correct with what's in the CR.
+            if !cronjobs::is_cronjob_spec_correct(&obj, cronjob.as_ref().unwrap(), &CONFIG.skopeo).await {
+                // CronJob spec is incorrect, delete it and recreate it.
+                cronjobs::delete_cronjob(cronjob.as_ref().unwrap(), &client)
+                    .await
+                    .unwrap();
+                cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client)
+                    .await
+                    .unwrap();
+                // Normal requeue
+                return Ok(Action::requeue(Duration::from_secs(30)));
+            }
+        }
+    }
+
     // Fallback requeue for periodic check (5min)
     Ok(Action::requeue(Duration::from_secs(300)))
 }
