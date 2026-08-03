@@ -393,6 +393,19 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
                     .unwrap();
                 // Normal requeue
                 return Ok(Action::requeue(Duration::from_secs(30)));
+            } else {
+                // CronJob spec is correct, update the status with the last successful run time.
+                let last_success = cronjobs::cronjob_get_last_success(obj.as_ref().clone()).await;
+                reconciler::update_status(
+                    obj.as_ref().clone(),
+                    true,
+                    true,
+                    String::from("ImageSync CronJob is running"),
+                    last_success,
+                    &client,
+                )
+                .await
+                .unwrap();
             }
         }
     }
