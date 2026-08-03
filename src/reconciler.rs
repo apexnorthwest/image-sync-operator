@@ -1,3 +1,5 @@
+// Copyright 2026 Apex Northwest
+// SPDX-License-Identifier: Apache-2.0
 /*
 Utility functions for the reconciler loop.
 */
@@ -8,7 +10,9 @@ use kube::api::{Patch, PatchParams};
 use kube::{Api, Client};
 use regex::Regex;
 
-// Returns true if the spec has changed or has never been evaluated.
+/// Checks if the spec of the ImageSync CR has changed since the last time it was applied. Returns true if it has changed, false otherwise.
+/// 
+/// All this function does is convert the spec and status.last_applied_config to JSON and compare them. If they are equal, then the spec has not changed. If they are not equal, then the spec has changed.
 pub async fn has_config_changed(obj: &ImageSync) -> Result<bool, Box<dyn std::error::Error>> {
     let spec_json = serde_json::to_value(obj.spec.clone())?;
     if let Some(status) = &obj.status
@@ -22,7 +26,7 @@ pub async fn has_config_changed(obj: &ImageSync) -> Result<bool, Box<dyn std::er
     Ok(true)
 }
 
-// Takes a new set of status values and updates the CR in the cluster.
+/// Take a list of new status values and update the CR. This is a common task in the reconciler loop so we abstract it out.
 pub async fn update_status(
     obj: ImageSync,
     accepted: bool,
@@ -71,7 +75,9 @@ pub async fn update_status(
     }
 }
 
-// Resets the status of the CR due to a spec change
+/// When the ImageSync spec has changed, we need to reset the status to not accepted.
+/// 
+/// This function simply calls the update_status function with the appropriate values to reset the status to not accepted.
 pub async fn reset_to_not_accepted(
     obj: &ImageSync,
     client: &Client,
@@ -92,7 +98,11 @@ pub async fn reset_to_not_accepted(
     Ok(())
 }
 
-// Run acceptance checks on the CR and update the status as appropriate. Returns True if accepted.
+/// Run acceptance checks on the ImageSync spec.
+/// 
+/// Whenever the spec changes, we need to verify that it's valid and that the secrets exist.
+/// This function returns true if the spec is valid and false otherwise.
+/// It also calls the update_status function to update the status of the ImageSync CR with the results of the acceptance checks.
 pub async fn acceptance_checks(
     obj: &ImageSync,
     client: &Client,

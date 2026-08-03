@@ -1,4 +1,5 @@
-FROM docker.io/library/rust@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c AS build # 1.97-slim
+# rust @ 1.97-slim
+FROM docker.io/library/rust@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c AS build
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src src
@@ -17,7 +18,8 @@ RUN set -e ; if lscpu | grep -q x86_64; then \
   else \
     echo "Unsupported architecture: $(lscpu | grep Architecture | awk '{print $2}')"; \
     exit 1; \
-  fi
+  fi ; \
+  rm -rf target /tmp/syft-*.deb # This speeds up the layer commit and thus the build
 # Run syft in the build container since our stripped binary makes it hard to generate this from the packed release image layer.
 # While we would usually prefer to do this outside the build container, this gives us the most accurate results.
 RUN syft . -o spdx-json=sbom.spdx.json
