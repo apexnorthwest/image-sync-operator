@@ -214,14 +214,10 @@ pub async fn cronjob_get_last_success(obj: ImageSync) -> Option<Time> {
     let cronjobs = get_cronjob_for_imagesync(&obj, &Client::try_default().await.unwrap())
         .await
         .unwrap();
-    if let Some(cronjob) = cronjobs {
-        if let Some(status) = cronjob.status {
-            if let Some(last_success) = status.last_successful_time {
-                return Some(last_success);
-            }
-        }
+    if let Some(cronjob) = cronjobs && let Some(status) = cronjob.status && let Some(last_success) = status.last_successful_time {
+        return Some(last_success);
     }
-    return None;
+    None
 }
 
 /// Checks if the given CronJob's spec matches the spec we would expect for a given ImageSync CR.

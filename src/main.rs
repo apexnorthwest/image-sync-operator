@@ -375,17 +375,11 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
         let cronjob = cronjobs::get_cronjob_for_imagesync(&obj, &client)
             .await
             .unwrap();
-        if cronjob.is_none() {
-            cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client)
-                .await
-                .unwrap();
-            // Fast requeue to watch the cronjob status
-            return Ok(Action::requeue(Duration::from_secs(5)));
-        } else {
+        if let Some(existing_cronjob) = cronjob {
             // CronJob exists, assert that the spec is correct with what's in the CR.
-            if !cronjobs::is_cronjob_spec_correct(&obj, cronjob.as_ref().unwrap(), &CONFIG.skopeo).await {
+            if !cronjobs::is_cronjob_spec_correct(&obj, &existing_cronjob, &CONFIG.skopeo).await {
                 // CronJob spec is incorrect, delete it and recreate it.
-                cronjobs::delete_cronjob(cronjob.as_ref().unwrap(), &client)
+                cronjobs::delete_cronjob(&existing_cronjob, &client)
                     .await
                     .unwrap();
                 cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client)
@@ -407,6 +401,12 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
                 .await
                 .unwrap();
             }
+        } else {
+            cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client)
+                .await
+                .unwrap();
+            // Standard requeue
+            return Ok(Action::requeue(Duration::from_secs(30)));
         }
     }
 
