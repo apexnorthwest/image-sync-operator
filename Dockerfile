@@ -7,13 +7,13 @@ ADD https://github.com/anchore/syft/releases/download/v1.50.0/syft_1.50.0_linux_
 ADD https://github.com/anchore/syft/releases/download/v1.50.0/syft_1.50.0_linux_arm64.deb /tmp/syft-arm64.deb
 RUN set -e ; if lscpu | grep -q x86_64; then \
     dpkg -i /tmp/syft-amd64.deb; \
-    rustup component add clippy && CARGO_BUILD_WARNINGS=deny RUSTFLAGS="-C target-feature=+crt-static" cargo clippy --release --target x86_64-unknown-linux-gnu &&\
-    CARGO_BUILD_WARNINGS=deny RUSTFLAGS="-C target-feature=+crt-static" cargo build --target x86_64-unknown-linux-gnu --release &&\
+    rustup component add clippy && CARGO_BUILD_WARNINGS=deny cargo clippy --release --target x86_64-unknown-linux-gnu &&\
+    CARGO_BUILD_WARNINGS=deny cargo build --target x86_64-unknown-linux-gnu --release &&\
     cp target/x86_64-unknown-linux-gnu/release/image-sync-operator /image-sync-operator || exit 1; \
   elif lscpu | grep -q aarch64; then \
     dpkg -i /tmp/syft-arm64.deb; \
-    rustup component add clippy && CARGO_BUILD_WARNINGS=deny RUSTFLAGS="-C target-feature=+crt-static" cargo clippy --release --target aarch64-unknown-linux-gnu &&\
-    CARGO_BUILD_WARNINGS=deny RUSTFLAGS="-C target-feature=+crt-static" cargo build --target aarch64-unknown-linux-gnu --release &&\
+    rustup component add clippy && CARGO_BUILD_WARNINGS=deny cargo clippy --release --target aarch64-unknown-linux-gnu &&\
+    CARGO_BUILD_WARNINGS=deny cargo build --target aarch64-unknown-linux-gnu --release &&\
     cp target/aarch64-unknown-linux-gnu/release/image-sync-operator /image-sync-operator; \
   else \
     echo "Unsupported architecture: $(lscpu | grep Architecture | awk '{print $2}')"; \
@@ -22,6 +22,7 @@ RUN set -e ; if lscpu | grep -q x86_64; then \
   rm -rf target /tmp/syft-*.deb # This speeds up the layer commit and thus the build
 # Run syft in the build container since our stripped binary makes it hard to generate this from the packed release image layer.
 # While we would usually prefer to do this outside the build container, this gives us the most accurate results.
+# Given the final image is distroless, the only thing that could drift is the glibc and even then it won't be by much.
 RUN syft . -o spdx-json=sbom.spdx.json
 
 # Use distroless-cc (we can't do scratch because aarch64 doesn't fully support static builds with our particular libraries)
