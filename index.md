@@ -6,11 +6,22 @@ You can also find the charts in the legacy helm registry format [here](charts/).
 
 Crate documentation for contributors can be found [here](doc/image_sync_operator/)
 
+All release images are signed with Cosign, available [here](https://github.com/sigstore/cosign)
+
+To verify the integrity of the image and helm chart:
+```sh
+curl -L https://apexnorthwest.github.io/image-sync-operator/cosign.pub > cosign.pub
+cosign verify --key cosign.pub ghcr.io/apexnorthwest/image-sync-operator:0.1.0
+cosign verify --key cosign.pub ghcr.io/apexnorthwest/charts/image-sync-operator:0.1.0
+```
+
 To install the operator in single-namespace mode with the default settings you would do the following:
 ```sh
 helm repo add apexnw oci://ghcr.io/apexnorthwest/charts
 helm install image-sync-operator apexnw/image-sync-operator -n image-sync-operator --create-namespace
 ```
+
+Note: This chart by default will require cluster admin level permissions to install the CRD file.
 
 To fully customize the configuration you would pass a values.yaml files like so:
 ```yaml
