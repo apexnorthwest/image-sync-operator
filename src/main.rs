@@ -1,23 +1,23 @@
 // Copyright 2026 Apex Northwest
 // SPDX-License-Identifier: Apache-2.0
 //! image-sync-operator is a Kubernetes operator that synchronizes container images between registries based on the ImageSync custom resource definition (CRD).
-//! 
+//!
 //! Installing the operator is typically done via helm by pulling the chart from the public oci repository.
 //! You can also find the charts in the legacy helm registry format [here](https://apexnorthwest.github.io/image-sync-operator/charts/).
-//! 
+//!
 //! To install the operator in single-namespace mode with the default settings you would do the following:
 //! ```sh
 //! helm repo add apexnw oci://ghcr.io/apexnorthwest/charts
 //! helm install image-sync-operator apexnw/image-sync-operator -n image-sync-operator --create-namespace
 //! ```
-//! 
+//!
 //! To fully customize the configuration you would pass a values.yaml files like so:
 //! ```yaml
 //! ---
 //! # Settings for the operator itself. This is the container that runs the operator code and watches for ImageSync CRs.
 //! operator:
 //!   # Image url to pull from
-//!   image: 
+//!   image:
 //!     repository: "ghcr.io/apexnorthwest/image-sync-operator"
 //!     tag: "0.1.0"
 //!     pullPolicy: "IfNotPresent"
@@ -67,9 +67,9 @@
 //!     - "default"
 //!     - "some-other-application"
 //! ```
-//! 
+//!
 //! You would then create ImageSync CRs in that same namespace (as in this example we've installed the operator in restricted mode, as is the default)
-//! 
+//!
 //! The following is an example of an ImageSync:
 //! ```yaml
 //! ---
@@ -91,7 +91,7 @@
 //!     image: "my-private-registry.example.com/library/alpine:latest"
 //!     # Optional: The name of a Secret in the same namespace of type kubernetes.io/dockerconfigjson used to authenticate to the destination registry.
 //!     registryLoginSecret: "private-registry"
-//!   # Optional: If you want to rerun the sync on a schedule after the initial sync. Uses CronJob format. If unset, the sync only runs once. 
+//!   # Optional: If you want to rerun the sync on a schedule after the initial sync. Uses CronJob format. If unset, the sync only runs once.
 //!   cronSchedule: "*/15 * * * *"
 //!   # Optional: If true, all architectures will be copied. If false, only the architecture of the operator pod will be copied. Defaults to false. This is the same as passing --all to skopeo.
 //!   allArchitectures: true
@@ -102,9 +102,9 @@
 //!   # Note that this is not a list of arguments, but a single string that will be split on whitespace. If it needs to have spaces in an argument (which it shouldn't), you will need to use single quotes inside the string.
 //!   extraSkopeoArguments: ""
 //! ```
-//! 
-//! This project is not meant to be used as a library or installed via cargo. As a result, all contained functions and modules documented within this site are 
-//! written for the use of contributors and not users of the operator. 
+//!
+//! This project is not meant to be used as a library or installed via cargo. As a result, all contained functions and modules documented within this site are
+//! written for the use of contributors and not users of the operator.
 
 /*
 This is the entrypoint for the operator.
@@ -226,15 +226,58 @@ async fn main() -> Result<(), kube::Error> {
 /// This runs as a single listener in global or single-namespace mode. In multi-namespace mode it will run as a listener on each namespace it monitors.
 /// Notably, this function usually only performs a single action when called, even if multiple actions are called for. This is because we want the function
 /// to be as idempotent as possible. It also ensures that no matter what state the ImageSync is in, it will always progress towards the correct state.
-/// 
+///
 /// This function is not meant to be called from anywhere other than the controller thread.
 async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
     // Configure K8s api connection
     let client = Client::try_default().await.unwrap();
 
+    let imagesyncs: Api<ImageSync> =
+        Api::namespaced(client.clone(), obj.metadata.namespace.as_ref().unwrap());
+
+    // Check if the imagesync still exists
+    match imagesyncs.get(obj.metadata.name.as_ref().unwrap()).await {
+        Ok(_) => {
+            // ImageSync still exists, continue processing
+        }
+        Err(kube::Error::Api(e)) if e.code == 404 => {
+            println!(
+                "ImageSync {} in namespace {} has been deleted. Cleaning up.",
+                obj.metadata.name.as_ref().unwrap(),
+                obj.metadata.namespace.as_ref().unwrap()
+            );
+            // Delete any jobs or cronjobs that might exist for this ImageSync
+            let job = jobs::get_job_for_imagesync(&obj, &client).await.unwrap();
+            if let Some(job) = job {
+                jobs::delete_job(&job, &client).await.unwrap();
+            }
+            let cronjob = cronjobs::get_cronjob_for_imagesync(&obj, &client)
+                .await
+                .unwrap();
+            if let Some(cronjob) = cronjob {
+                cronjobs::delete_cronjob(&cronjob, &client).await.unwrap();
+            }
+            return Ok(Action::await_change());
+        }
+        Err(e) => {
+            eprintln!(
+                "Error getting ImageSync {} in namespace {}: {}",
+                obj.metadata.name.as_ref().unwrap(),
+                obj.metadata.namespace.as_ref().unwrap(),
+                e
+            );
+            return Ok(Action::requeue(Duration::from_secs(30)));
+        }
+    }
+
     // Check if the config has changed or is new
     if reconciler::has_config_changed(&obj).await.unwrap() {
-        // Spec has changed, reset status
+        println!(
+            "Spec of ImageSync {} in namespace {} has changed. Resetting status and deleting any jobs or cronjobs.",
+            obj.metadata.name.as_ref().unwrap(),
+            obj.metadata.namespace.as_ref().unwrap()
+        );
+        // Spec has changed, reset status and delete any job or cronjob that might exist
         reconciler::reset_to_not_accepted(&obj, &client)
             .await
             .unwrap();
@@ -263,7 +306,45 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
     // Process the CR when it's both accepted and ready
     if obj.status.as_ref().unwrap().ready {
         if obj.spec.cron_schedule.is_some() {
-            // TODO: Implement cron job features
+            let cronjob = cronjobs::get_cronjob_for_imagesync(&obj, &client)
+                .await
+                .unwrap();
+            if let Some(existing_cronjob) = cronjob {
+                // CronJob exists, assert that the spec is correct with what's in the CR.
+                if !cronjobs::is_cronjob_spec_correct(&obj, &existing_cronjob, &CONFIG.skopeo).await
+                {
+                    // CronJob spec is incorrect, delete it and recreate it.
+                    cronjobs::delete_cronjob(&existing_cronjob, &client)
+                        .await
+                        .unwrap();
+                    cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client)
+                        .await
+                        .unwrap();
+                    // Normal requeue
+                    return Ok(Action::requeue(Duration::from_secs(30)));
+                } else {
+                    // CronJob spec is correct, update the status with the last successful run time.
+                    let last_success =
+                        cronjobs::cronjob_get_last_success(obj.as_ref().clone()).await;
+                    reconciler::update_status(
+                        obj.as_ref().clone(),
+                        true,
+                        true,
+                        String::from("ImageSync CronJob is running"),
+                        last_success,
+                        &client,
+                    )
+                    .await
+                    .unwrap();
+                    return Ok(Action::requeue(Duration::from_secs(30)));
+                }
+            } else {
+                cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client)
+                    .await
+                    .unwrap();
+                // Standard requeue
+                return Ok(Action::requeue(Duration::from_secs(30)));
+            }
         } else {
             // If the CR is ready and does not have a cron schedule, there's nothing to do. Do a very long requeue.
             return Ok(Action::requeue(Duration::from_secs(3600)));
@@ -287,21 +368,22 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
         // Job is not running, check if it succeeded or failed
         if jobs::is_job_failed(job.as_ref().unwrap()).await {
             // Job failed. Check how long ago the job failed. If it was more than 10 minutes ago we will delete it to retry.
-            let last_completion_time = job
+            let failure_time = job
                 .as_ref()
                 .unwrap()
                 .status
                 .as_ref()
                 .unwrap()
-                .completion_time
-                .clone()
+                .conditions
+                .as_ref()
+                .unwrap()
+                .iter()
+                .find(|c| c.type_ == "Failed")
+                .unwrap()
+                .last_transition_time
+                .as_ref()
                 .unwrap();
-            if last_completion_time
-                .0
-                .duration_until(Timestamp::now())
-                .as_mins()
-                > 10
-            {
+            if failure_time.0.duration_until(Timestamp::now()).as_mins() > 10 {
                 // Delete the job to retry
                 jobs::delete_job(job.as_ref().unwrap(), &client)
                     .await
@@ -317,7 +399,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
                 )
                 .await
                 .unwrap();
-                return Ok(Action::requeue(Duration::from_secs(5)));
+                Ok(Action::requeue(Duration::from_secs(5)))
             } else {
                 reconciler::update_status(
                     obj.as_ref().clone(),
@@ -329,6 +411,8 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
                 )
                 .await
                 .unwrap();
+                // Normal requeue to check the job status again
+                Ok(Action::requeue(Duration::from_secs(30)))
             }
         } else {
             // Job succeeded. Update the status to ready.
@@ -352,7 +436,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
             .await
             .unwrap();
             // Fast requeue since we don't know if we need to create a CronJob or not.
-            return Ok(Action::requeue(Duration::from_secs(5)));
+            Ok(Action::requeue(Duration::from_secs(5)))
         }
     } else {
         // Job is still running, update the status to not ready.
@@ -367,51 +451,8 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
         .await
         .unwrap();
         // Fast requeue to watch the job status
-        return Ok(Action::requeue(Duration::from_secs(5)));
+        Ok(Action::requeue(Duration::from_secs(5)))
     }
-
-    // Manage CronJobs when needed
-    if obj.spec.cron_schedule.is_some() {
-        let cronjob = cronjobs::get_cronjob_for_imagesync(&obj, &client)
-            .await
-            .unwrap();
-        if let Some(existing_cronjob) = cronjob {
-            // CronJob exists, assert that the spec is correct with what's in the CR.
-            if !cronjobs::is_cronjob_spec_correct(&obj, &existing_cronjob, &CONFIG.skopeo).await {
-                // CronJob spec is incorrect, delete it and recreate it.
-                cronjobs::delete_cronjob(&existing_cronjob, &client)
-                    .await
-                    .unwrap();
-                cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client)
-                    .await
-                    .unwrap();
-                // Normal requeue
-                return Ok(Action::requeue(Duration::from_secs(30)));
-            } else {
-                // CronJob spec is correct, update the status with the last successful run time.
-                let last_success = cronjobs::cronjob_get_last_success(obj.as_ref().clone()).await;
-                reconciler::update_status(
-                    obj.as_ref().clone(),
-                    true,
-                    true,
-                    String::from("ImageSync CronJob is running"),
-                    last_success,
-                    &client,
-                )
-                .await
-                .unwrap();
-            }
-        } else {
-            cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client)
-                .await
-                .unwrap();
-            // Standard requeue
-            return Ok(Action::requeue(Duration::from_secs(30)));
-        }
-    }
-
-    // Fallback requeue for periodic check (5min)
-    Ok(Action::requeue(Duration::from_secs(300)))
 }
 
 /// This function is called when the reconciler encounters an error. In this case, we simply retry the reconcile after 30 seconds.

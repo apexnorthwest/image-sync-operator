@@ -30,3 +30,8 @@ kubectl wait --for=condition=complete --timeout=300s job/test4 -n registry
 kubectl logs job/test4 -n registry | grep "Test 4 Passed"
 
 echo "Registry test environment is ready."
+
+kubectl delete job/test1 -n registry
+kubectl delete job/test2 -n registry
+kubectl delete job/test3 -n registry
+kubectl delete job/test4 -n registry

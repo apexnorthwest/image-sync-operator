@@ -4,21 +4,23 @@
 Utility functions for the reconciler loop.
 */
 
-use crate::imagesync::{ImageSync, ImageSyncStatus};
+use crate::imagesync::{ImageSync, ImageSyncSpec, ImageSyncStatus};
+use k8s_openapi::api::batch::v1::Job;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
-use kube::api::{Patch, PatchParams};
+use kube::api::PostParams;
 use kube::{Api, Client};
 use regex::Regex;
 
 /// Checks if the spec of the ImageSync CR has changed since the last time it was applied. Returns true if it has changed, false otherwise.
-/// 
+///
 /// All this function does is convert the spec and status.last_applied_config to JSON and compare them. If they are equal, then the spec has not changed. If they are not equal, then the spec has changed.
 pub async fn has_config_changed(obj: &ImageSync) -> Result<bool, Box<dyn std::error::Error>> {
     let spec_json = serde_json::to_value(obj.spec.clone())?;
     if let Some(status) = &obj.status
         && let Some(last_applied_config) = Some(status.clone().last_applied_config)
     {
-        let last_applied_config_json = serde_json::to_value(last_applied_config.clone())?;
+        let last_applied_config_json =
+            serde_json::to_value(serde_json::from_str::<ImageSyncSpec>(&last_applied_config)?)?;
         if last_applied_config_json.eq(&spec_json) {
             return Ok(false);
         }
@@ -33,50 +35,60 @@ pub async fn update_status(
     ready: bool,
     accepted_message: String,
     last_completion_time: Option<Time>,
-    client: &Client,
+    _client: &Client,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!(
-        "ImageSync {} config has changed, setting ready=false",
-        obj.metadata.name.clone().unwrap()
-    );
     let imagesyncs: Api<ImageSync> = Api::namespaced(
-        client.clone(),
-        obj.metadata.namespace.clone().unwrap().as_str(),
+        kube::Client::try_default().await.unwrap(),
+        obj.metadata.namespace.as_ref().unwrap().as_str(),
     );
-    let mut patched_obj = obj.clone();
+    println!(
+        "Updating status for ImageSync {} in namespace {}: accepted={}, ready={}, message={}",
+        obj.metadata.name.as_ref().unwrap(),
+        obj.metadata.namespace.as_ref().unwrap(),
+        accepted,
+        ready,
+        accepted_message
+    );
+    let mut patched_obj = imagesyncs
+        .get(obj.metadata.name.as_ref().unwrap().as_str())
+        .await?;
     patched_obj.status = Some(ImageSyncStatus {
         accepted,
         message: accepted_message,
         ready,
-        last_applied_config: obj.spec.clone(),
+        last_applied_config: serde_json::to_string(&obj.spec)?,
         last_completion_time,
     });
-    let patch_params = PatchParams::apply("image-sync-operator").force();
-    let patch = Patch::Apply(&patched_obj);
+    let post_params = PostParams::default();
     match imagesyncs
-        .patch_status(&obj.metadata.name.clone().unwrap(), &patch_params, &patch)
+        .replace_status(
+            patched_obj.metadata.name.as_ref().unwrap().as_str(),
+            &post_params,
+            &patched_obj,
+        )
         .await
     {
         Ok(_) => {
             println!(
                 "Successfully updated status for ImageSync {}",
-                obj.metadata.name.clone().unwrap()
+                obj.metadata.name.as_ref().unwrap()
             );
             Ok(())
         }
         Err(e) => {
             println!(
                 "Failed to update status for ImageSync {}: {}",
-                obj.metadata.name.clone().unwrap(),
+                obj.metadata.name.as_ref().unwrap(),
                 e
             );
+            println!("{}", serde_json::to_string_pretty(&patched_obj).unwrap());
             Err(Box::new(e))
         }
     }
 }
 
 /// When the ImageSync spec has changed, we need to reset the status to not accepted.
-/// 
+///
 /// This function simply calls the update_status function with the appropriate values to reset the status to not accepted.
 pub async fn reset_to_not_accepted(
     obj: &ImageSync,
@@ -86,6 +98,43 @@ pub async fn reset_to_not_accepted(
         "Resetting ImageSync {} to not accepted",
         obj.metadata.name.clone().unwrap()
     );
+    let basename = if obj.metadata.name.as_ref().unwrap().len() > 50 {
+        obj.metadata.name.as_ref().unwrap()[0..50].to_string()
+    } else {
+        obj.metadata.name.as_ref().unwrap().to_string()
+    };
+    let jobs = Api::<Job>::namespaced(client.clone(), obj.metadata.namespace.as_ref().unwrap());
+    let cronjobs = Api::<k8s_openapi::api::batch::v1::CronJob>::namespaced(
+        client.clone(),
+        obj.metadata.namespace.as_ref().unwrap(),
+    );
+    if jobs.get(obj.metadata.name.as_ref().unwrap()).await.is_ok() {
+        println!(
+            "Deleting job imagesync-{} because the spec has changed",
+            basename
+        );
+        jobs.delete(
+            format!("imagesync-{}", basename).as_str(),
+            &Default::default(),
+        )
+        .await?;
+    }
+    if cronjobs
+        .get(obj.metadata.name.as_ref().unwrap())
+        .await
+        .is_ok()
+    {
+        println!(
+            "Deleting cronjob imagesync-{} because the spec has changed",
+            basename
+        );
+        cronjobs
+            .delete(
+                format!("imagesync-{}", basename).as_str(),
+                &Default::default(),
+            )
+            .await?;
+    }
     update_status(
         obj.clone(),
         false,
@@ -99,7 +148,7 @@ pub async fn reset_to_not_accepted(
 }
 
 /// Run acceptance checks on the ImageSync spec.
-/// 
+///
 /// Whenever the spec changes, we need to verify that it's valid and that the secrets exist.
 /// This function returns true if the spec is valid and false otherwise.
 /// It also calls the update_status function to update the status of the ImageSync CR with the results of the acceptance checks.
@@ -173,7 +222,7 @@ pub async fn acceptance_checks(
     // Acceptance check for the cron schedule
     if let Some(schedule) = &obj.spec.cron_schedule {
         // This regex is a bit of a guess since the official k8s api spec doesn't define the exact format. We presume it's the same as most other cron implementions.
-        if !Regex::new(r"^((((\d+,)+\d+|(\d+(/|-|#)\d+)|\d+L?|\*(/\d+)?|L(-\d+)?|\?|[A-Z]{3}(-[A-Z]{3})?) ?){5,7})$|(@(annually|yearly|monthly|weekly|daily|hourly|reboot))|(@every (\d+(ns|us|µs|ms|s|m|h))+)$").unwrap().is_match(schedule) {
+        if Regex::new(r"^((((\d+,)+\d+|(\d+(/|-|#)\d+)|\d+L?|\*(/\d+)?|L(-\d+)?|\?|[A-Z]{3}(-[A-Z]{3})?) ?){5,7})$|(@(annually|yearly|monthly|weekly|daily|hourly|reboot))|(@every (\d+(ns|us|µs|ms|s|m|h))+)$").unwrap().is_match(schedule) {
             println!("Cron schedule {} is valid", schedule);
         } else {
             println!("Cron schedule {} is invalid", schedule);
@@ -182,13 +231,13 @@ pub async fn acceptance_checks(
     }
 
     // Acceptance check for the source image URL
-    if !Regex::new(r"^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])/[a-zA-Z0-9_\-\.]+/[a-zA-Z0-9_\-\.]+(:[a-zA-Z0-9_\-\.]{1,128}|@sha256:[a-f0-9]+)").unwrap().is_match(&obj.spec.source.image) {
+    if !Regex::new(r"^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])(:[0-9]+)?/[a-zA-Z0-9_\-\.]+/[a-zA-Z0-9_\-\.]+(:[a-zA-Z0-9_\-\.]{1,128}|@sha256:[a-f0-9]+)").unwrap().is_match(&obj.spec.source.image) {
         println!("Source image URL {} is invalid", obj.spec.source.image);
         source_image_okay = false;
     }
 
     // Acceptance check for the destination image URL
-    if !Regex::new(r"^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])/[a-zA-Z0-9_\-\.]+/[a-zA-Z0-9_\-\.]+(:[a-zA-Z0-9_\-\.]{1,128})").unwrap().is_match(&obj.spec.destination.image) {
+    if !Regex::new(r"^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])(:[0-9]+)?/[a-zA-Z0-9_\-\.]+/[a-zA-Z0-9_\-\.]+(:[a-zA-Z0-9_\-\.]{1,128})").unwrap().is_match(&obj.spec.destination.image) {
         println!("Destination image URL {} is invalid", obj.spec.destination.image);
         dest_image_okay = false;
     }

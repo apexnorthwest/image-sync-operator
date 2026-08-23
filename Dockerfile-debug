@@ -8,12 +8,13 @@ RUN mkdir -p src && echo 'fn main() { println!("hello world")}' > src/main.rs &&
     CARGO_BUILD_WARNINGS=deny cargo build
 
 # Copy the real source code and build
-COPY src src
-RUN CARGO_BUILD_WARNINGS=deny cargo build &&\
+COPY src/ src
+RUN touch src/main.rs &&\
+    CARGO_BUILD_WARNINGS=deny cargo build &&\
     cp target/debug/image-sync-operator /image-sync-operator
 
-# To keep the debug image from being huge, we copy the binary into a slim debian image from tag 12-slim
-FROM docker.io/library/debian@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818 AS debug
+# To keep the debug image from being huge, we copy the binary into a the distroless cc-debian13:debug-nonroot image.
+FROM gcr.io/distroless/cc-debian13@sha256:3f20bad71902a58a123541843c4e7f00d16ed938663b6df892135a8f5f950fdc AS debug
 COPY --from=build /image-sync-operator /image-sync-operator
 USER 9999:9999
-CMD ["/image-sync-operator"]
+ENTRYPOINT ["/image-sync-operator"]

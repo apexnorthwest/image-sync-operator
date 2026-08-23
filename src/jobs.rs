@@ -16,11 +16,12 @@ use std::collections::BTreeMap;
 /// Delete the given job from the Kubernetes cluster.
 pub async fn delete_job(job: &Job, client: &Client) -> Result<(), Box<dyn std::error::Error>> {
     let jobs: Api<Job> = Api::namespaced(client.clone(), job.metadata.namespace.as_ref().unwrap());
+    let del_params = kube::api::DeleteParams {
+        propagation_policy: Some(kube::api::PropagationPolicy::Foreground),
+        ..Default::default()
+    };
     match jobs
-        .delete(
-            job.metadata.name.clone().unwrap().as_str(),
-            &Default::default(),
-        )
+        .delete(job.metadata.name.clone().unwrap().as_str(), &del_params)
         .await
     {
         Ok(_) => {
@@ -39,7 +40,7 @@ pub async fn delete_job(job: &Job, client: &Client) -> Result<(), Box<dyn std::e
 }
 
 /// Get the job associated with the given ImageSync CR, if it exists.
-/// 
+///
 /// Returns a Job object if it finds one, None if it does not, or Errors out if there are more than one job. This should never happen unless something has gone quite wrong.
 pub async fn get_job_for_imagesync(
     obj: &ImageSync,
@@ -76,7 +77,7 @@ pub async fn get_job_for_imagesync(
 }
 
 /// Create a one-shot sync Job for the given CR.
-/// 
+///
 /// Because we can get all the information we need from the CR, we only pass the CR and the global SkopeoConfig to this function.
 pub async fn create_job(
     obj: &ImageSync,
@@ -104,7 +105,7 @@ pub async fn create_job(
     command.push(r#"cat >> /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem <<EOF
 {ca_trust_bundle}
 EOF
-skopeo copy {debug} {preserve_digests} {all_architectures} {src_options} {dest_options} {extra_arguments} docker://{src} docker://{dest}"#
+skopeo copy --src-cert-dir /etc/pki/ca-trust/extracted/pem --dest-cert-dir /etc/pki/ca-trust/extracted/pem {debug} {preserve_digests} {all_architectures} {src_options} {dest_options} {extra_arguments} docker://{src} docker://{dest}"#
                     .replace("{debug}", if debug { "--debug" } else { "" })
                     .replace("{ca_trust_bundle}", config.ca_trust_bundle.as_ref().map_or("", |s| s))
                     .replace("{preserve_digests}", if obj.spec.preserve_digests.unwrap_or(false) { "--preserve-digests" } else { "" })
@@ -182,6 +183,7 @@ skopeo copy {debug} {preserve_digests} {all_architectures} {src_options} {dest_o
                 }),
             },
             backoff_limit: Some(4),
+            ttl_seconds_after_finished: Some(3600),
             ..Default::default()
         }),
         status: None,
@@ -197,6 +199,9 @@ pub async fn is_job_complete(job: &Job) -> bool {
     {
         for condition in conditions {
             if condition.type_ == "Complete" && condition.status == "True" {
+                return true;
+            }
+            if condition.type_ == "Failed" && condition.status == "True" {
                 return true;
             }
         }
