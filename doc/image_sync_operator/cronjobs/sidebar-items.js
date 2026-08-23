@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {};
+window.SIDEBAR_ITEMS = {"fn":["create_cronjob","cronjob_get_last_success","delete_cronjob","generate_cronjob_object","get_cronjob_for_imagesync","is_cronjob_spec_correct"]};
