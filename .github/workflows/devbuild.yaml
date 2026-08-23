@@ -75,7 +75,9 @@ jobs:
           COSIGN_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
         run: |
           echo "$COSIGN_KEY" > cosign.key
+          echo "Assembling multi-arch manifest for ghcr.io/apexnorthwest/image-sync-operator:dev"
           docker manifest create ghcr.io/apexnorthwest/image-sync-operator:dev ghcr.io/apexnorthwest/image-sync-operator:dev-amd64 ghcr.io/apexnorthwest/image-sync-operator:dev-arm64
-          cosign sign --key cosign.key ghcr.io/apexnorthwest/image-sync-operator:dev
-          rm cosign.key
+          echo "Pushing multi-arch manifest for ghcr.io/apexnorthwest/image-sync-operator:dev"
           docker manifest push ghcr.io/apexnorthwest/image-sync-operator:dev
+          echo "Signing multi-arch manifest for ghcr.io/apexnorthwest/image-sync-operator:dev with cosign"
+          cosign sign --key cosign.key ghcr.io/apexnorthwest/image-sync-operator:dev
