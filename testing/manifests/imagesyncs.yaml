@@ -5,9 +5,20 @@ metadata:
   name: test-image-sync-unauth
 spec:
   source:
-    image: "docker.io/library/alpine:latest"
+    image: "mirror.gcr.io/library/alpine:latest"
   destination:
-    image: "registry.registry.svc.cluster.local:5000/library/alpine:latest"
+    image: "registry.registry.svc.cluster.local:5000/library/alpine:test1"
+
+---
+apiVersion: imagesync.apexnw.dev/v1alpha1
+kind: ImageSync
+metadata:
+  name: test-image-sync-mustfail
+spec:
+  source:
+    image: "mirror.gcr.io/library/alpine:bogustagthatdontexist"
+  destination:
+    image: "registry.registry.svc.cluster.local:5000/library/alpine:test2"
 
 ---
 apiVersion: imagesync.apexnw.dev/v1alpha1
@@ -16,9 +27,9 @@ metadata:
   name: test-image-sync-destauth
 spec:
   source:
-    image: "docker.io/library/alpine:latest"
+    image: "mirror.gcr.io/library/alpine:latest"
   destination:
-    image: "registry-authenticated.registry.svc.cluster.local:5000/library/alpine:latest"
+    image: "registry-authenticated.registry.svc.cluster.local:5000/library/alpine:test3"
     registryLoginSecret: "private-registry"
 
 ---
@@ -28,11 +39,11 @@ metadata:
   name: test-image-sync-cron-unauth
 spec:
   source:
-    image: "docker.io/library/alpine:latest"
+    image: "mirror.gcr.io/library/alpine:latest"
   destination:
-    image: "registry-authenticated.registry.svc.cluster.local:5000/library/alpine:latest"
+    image: "registry-authenticated.registry.svc.cluster.local:5000/library/alpine:test4"
     registryLoginSecret: "private-registry"
-  cronSchedule: "*/15 * * * *"
+  cronSchedule: "*/5 * * * *"
 
 ---
 apiVersion: imagesync.apexnw.dev/v1alpha1
@@ -41,8 +52,8 @@ metadata:
   name: test-image-sync-cron-destauth
 spec:
   source:
-    image: "docker.io/library/alpine:latest"
+    image: "mirror.gcr.io/library/alpine:latest"
   destination:
-    image: "registry-authenticated.registry.svc.cluster.local:5000/library/alpine:latest"
+    image: "registry-authenticated.registry.svc.cluster.local:5000/library/alpine:test5"
     registryLoginSecret: "private-registry"
-  cronSchedule: "*/15 * * * *"
+  cronSchedule: "*/5 * * * *"

@@ -51,7 +51,7 @@ pub struct ImageSyncStatus {
     pub accepted: bool,
     pub ready: bool,
     #[serde(rename = "lastAppliedConfig")]
-    pub last_applied_config: ImageSyncSpec,
+    pub last_applied_config: String,
     #[serde(rename = "lastCompletionTime")]
     pub last_completion_time: Option<Time>,
     pub message: String,

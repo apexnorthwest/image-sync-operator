@@ -2,16 +2,31 @@
 set -e
 
 # Setup a test environment using KIND.
-
-# This script presumes you have working kind, kubectl, and helm binaries in your path.
-# It also assumes you can run kind with sudo, as rootless kind is less well supported.
-# If you know that your kind installation can run rootless, you can change the two below commands.
+# These scripts presume you have working kind, kubectl, helm, and docker that do not require sudo to run.
 
 # Bootstrap a kind cluster and fetch the kubeconfig
 if docker --version >/dev/null 2>&1; then
     echo "Docker is installed"
 else
     echo "Docker is not installed. Please install Docker to continue."
+    exit 1
+fi
+if kind version >/dev/null 2>&1; then
+    echo "Kind is installed"
+else
+    echo "Kind is not installed. Please install Kind to continue."
+    exit 1
+fi
+if kubectl version --client >/dev/null 2>&1; then
+    echo "kubectl is installed"
+else
+    echo "kubectl is not installed. Please install kubectl to continue."
+    exit 1
+fi
+if helm version >/dev/null 2>&1; then
+    echo "Helm is installed"
+else
+    echo "Helm is not installed. Please install Helm to continue."
     exit 1
 fi
 kind create cluster --name testing --wait 10m

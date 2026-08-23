@@ -12,13 +12,17 @@ rules:
   - apiGroups: ["imagesync.apexnw.dev"]
     resources: ["imagesyncs"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["imagesync.apexnw.dev"]
+    resources: ["imagesyncs/status"]
+    verbs: ["get", "update", "patch"]
   # The operator needs to be able to read secrets to perform validation
   # Otherwise it would have to run Jobs and let them fail. It's simpler
   # to check ahead of time if the secret exists and is of the correct type.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["list"]
+    verbs: ["list", "get"]
+  # The operator needs to be able to manage Jobs to perform the image syncs.
   - apiGroups: ["batch"]
-    resources: ["jobs"]
-    verbs: ["create", "get", "list", "watch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
 {{- end }}
