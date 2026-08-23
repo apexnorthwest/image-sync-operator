@@ -84,3 +84,5 @@ jobs:
           docker manifest push ghcr.io/apexnorthwest/image-sync-operator:dev
           echo "Signing multi-arch manifest for ghcr.io/apexnorthwest/image-sync-operator:dev with cosign"
           cosign sign --key cosign.key ghcr.io/apexnorthwest/image-sync-operator:dev
+          cosign sign --key cosign.key ghcr.io/apexnorthwest/image-sync-operator:dev-amd64
+          cosign sign --key cosign.key ghcr.io/apexnorthwest/image-sync-operator:dev-arm64
