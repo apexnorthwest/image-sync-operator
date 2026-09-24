@@ -45,7 +45,7 @@ jobs:
         with:
           push: true
           provenance: false
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ghcr.io/apexnorthwest/image-sync-operator:${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Run Trivy vulnerability scanner

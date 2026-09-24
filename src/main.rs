@@ -131,6 +131,7 @@ use kube::{
 };
 use kube_lease_manager::LeaseManagerBuilder;
 use once_cell::sync::Lazy;
+use rustls::crypto::aws_lc_rs;
 use std::{sync::Arc, time::Duration};
 
 /// Catchall error type for the operator.
@@ -147,6 +148,10 @@ pub static CONFIG: Lazy<Config> =
 /// and calls the reconciler when a change is detected. It uses tokio as the async runtime and is not meant to be called directly.
 #[tokio::main]
 async fn main() -> Result<(), kube::Error> {
+    // Use unwrap during initialization of the operator because all of these errors are fatal anyways.
+    // At some point we should handle them if for no other reason than to print better error messages.
+    aws_lc_rs::default_provider().install_default().unwrap();
+
     let client = Client::try_default().await?;
     let namespace = client.default_namespace();
 
