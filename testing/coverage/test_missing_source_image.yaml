@@ -1,0 +1,11 @@
+---
+apiVersion: imagesync.apexnw.dev/v1alpha1
+kind: ImageSync
+metadata:
+  name: test-missing-source-image
+  namespace: image-sync-operator
+spec:
+  source:
+    registryLoginSecret: "source-secret"
+  destination:
+    image: "registry.registry.svc.cluster.local:5000/library/alpine:test-missing-source-image"

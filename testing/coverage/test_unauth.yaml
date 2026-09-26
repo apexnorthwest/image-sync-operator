@@ -1,0 +1,10 @@
+---
+apiVersion: imagesync.apexnw.dev/v1alpha1
+kind: ImageSync
+metadata:
+  name: test-image-sync-unauth
+spec:
+  source:
+    image: "mirror.gcr.io/library/alpine:latest"
+  destination:
+    image: "registry.registry.svc.cluster.local:5000/library/alpine:test1"

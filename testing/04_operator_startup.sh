@@ -33,6 +33,4 @@ if [ $i -eq 180 ]; then
   exit 1
 fi
 
-# Create some CRs to exercise the operator.
-kubectl apply -f manifests/imagesyncs.yaml -n image-sync-operator
-# TODO: check that the job gets created and succeeds. This could take a few minutes.
+echo "Operator is ready for testing"

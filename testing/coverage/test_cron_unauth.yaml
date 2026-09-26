@@ -1,0 +1,12 @@
+---
+apiVersion: imagesync.apexnw.dev/v1alpha1
+kind: ImageSync
+metadata:
+  name: test-image-sync-cron-unauth
+spec:
+  source:
+    image: "mirror.gcr.io/library/alpine:latest"
+  destination:
+    image: "registry-authenticated.registry.svc.cluster.local:5000/library/alpine:test4"
+    registryLoginSecret: "private-registry"
+  cronSchedule: "*/1 * * * *"

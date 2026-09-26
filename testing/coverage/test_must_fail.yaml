@@ -1,0 +1,10 @@
+---
+apiVersion: imagesync.apexnw.dev/v1alpha1
+kind: ImageSync
+metadata:
+  name: test-image-sync-mustfail
+spec:
+  source:
+    image: "mirror.gcr.io/library/alpine:bogustagthatdontexist"
+  destination:
+    image: "registry.registry.svc.cluster.local:5000/library/alpine:test2"
