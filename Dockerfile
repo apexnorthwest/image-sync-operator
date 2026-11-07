@@ -13,6 +13,7 @@ RUN set -e ; if lscpu | grep -q x86_64; then \
     CARGO_BUILD_WARNINGS=deny RUSTFLAGS="-C target-feature=+crt-static" cargo auditable build --target x86_64-unknown-linux-gnu --release &&\
     cp target/x86_64-unknown-linux-gnu/release/image-sync-operator /image-sync-operator || exit 1; \
   elif lscpu | grep -q aarch64; then \
+    apt update && apt install -y musl musl-dev &&\
     rustup component add clippy &&\
     rustup target add aarch64-unknown-linux-musl &&\
     cargo install cargo-auditable &&\
