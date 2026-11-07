@@ -26,7 +26,6 @@ jobs:
     with:
       scan-args: |-
         -r
-        --skip-git
         ./
   osv-scan-pr:
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
@@ -39,7 +38,6 @@ jobs:
     with:
       scan-args: |-
         -r
-        --skip-git
         ./
   ossf-scorecard-scheduled:
     name: Scorecard analysis
