@@ -185,11 +185,11 @@ skopeo copy --src-cert-dir /etc/pki/ca-trust/extracted/pem --dest-cert-dir /etc/
             )])),
             ..Default::default()
         },
-        spec: CronJobSpec {
+        spec: Some(CronJobSpec {
             schedule: obj.spec.cron_schedule.as_ref().unwrap().to_string(),
             job_template: jobtemplate,
             ..Default::default()
-        },
+        }),
         ..Default::default()
     }
 }
@@ -247,15 +247,17 @@ pub async fn is_cronjob_spec_correct(
     if let expected_spec = expected_cronjob.spec
         && let actual_spec = &cronjob.spec
     {
-        if !expected_spec.schedule.eq(&actual_spec.schedule) {
+        let local_actual_spec = actual_spec.as_ref().unwrap().clone();
+        let local_expected_spec = expected_spec.as_ref().unwrap().clone();
+        if !local_expected_spec.schedule.eq(&local_actual_spec.schedule) {
             println!(
                 "CronJob schedule does not match expected: {} != {}",
-                expected_spec.schedule, actual_spec.schedule
+                local_expected_spec.schedule, local_actual_spec.schedule
             );
             return false;
         }
-        if let Some(expected_job_template) = expected_spec.job_template.spec
-            && let Some(actual_job_template) = &actual_spec.job_template.spec
+        if let Some(expected_job_template) = local_expected_spec.job_template.spec
+            && let Some(actual_job_template) = &local_actual_spec.job_template.spec
         {
             if expected_job_template.backoff_limit != actual_job_template.backoff_limit {
                 println!(
