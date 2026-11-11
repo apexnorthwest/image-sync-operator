@@ -1,0 +1,35 @@
+[project]
+name = "image-sync-operator-tests"
+version = "0.0.0"
+description = "KMock based integration tests for the image-sync-operator"
+requires-python = ">=3.12"
+dependencies = [
+    "jsonschema>=4.26.0",
+    "kmock>=0.8",
+    "pytest>=8",
+    "pytest-asyncio>=1.0",
+    "pytest-xdist>=3.8.0",
+    "pyyaml>=6",
+    "types-jsonschema>=4.26.0.20261006",
+    "types-pyyaml",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["."]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 130
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "SIM", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["categories", "conftest", "fakek8s", "harness"]
+
+[tool.ty.environment]
+python = ".venv"
+extra-paths = ["."]

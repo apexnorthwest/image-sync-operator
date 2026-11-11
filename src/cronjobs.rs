@@ -3,20 +3,18 @@
 //! This module contains the helper functions to manage the CronJobs used by scheduled image syncs.
 
 use crate::config::SkopeoConfig;
+use crate::error::{OpError, Result};
 use crate::imagesync::ImageSync;
 use k8s_openapi::api::batch::v1::{CronJob, CronJobSpec, JobSpec, JobTemplateSpec};
 use k8s_openapi::api::core::v1::{
     Container, PodSpec, PodTemplateSpec, SecretVolumeSource, Volume, VolumeMount,
 };
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, Time};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::{Api, Client};
 use std::collections::BTreeMap;
 
 /// Delete the given job from the Kubernetes cluster.
-pub async fn delete_cronjob(
-    job: &CronJob,
-    client: &Client,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn delete_cronjob(job: &CronJob, client: &Client) -> Result<(), OpError> {
     let jobs: Api<CronJob> =
         Api::namespaced(client.clone(), job.metadata.namespace.as_ref().unwrap());
     match jobs
@@ -36,7 +34,7 @@ pub async fn delete_cronjob(
                 job.metadata.name.as_ref().unwrap(),
                 e
             );
-            Err(Box::new(e))
+            Err(OpError::from(e))
         }
     }
 }
@@ -47,7 +45,7 @@ pub async fn delete_cronjob(
 pub async fn get_cronjob_for_imagesync(
     obj: &ImageSync,
     client: &Client,
-) -> Result<Option<CronJob>, Box<dyn std::error::Error>> {
+) -> Result<Option<CronJob>, OpError> {
     let jobs: Api<CronJob> = Api::namespaced(
         client.clone(),
         obj.metadata.namespace.as_ref().unwrap().as_str(),
@@ -70,9 +68,9 @@ pub async fn get_cronjob_for_imagesync(
             "Found multiple cronjobs for ImageSync {}. This should not happen.",
             basename
         );
-        Err(Box::new(std::io::Error::other(
-            "Multiple cronjobs found for ImageSync",
-        )))
+        Err(OpError::from(
+            "Multiple cronjobs found for ImageSync".to_string(),
+        ))
     } else {
         Ok(None)
     }
@@ -201,7 +199,7 @@ pub async fn create_cronjob(
     obj: &ImageSync,
     config: &SkopeoConfig,
     client: &Client,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), OpError> {
     let debug = std::env::var("DEBUG").is_ok();
     let cronjobs: Api<CronJob> = Api::namespaced(
         client.clone(),
@@ -211,26 +209,10 @@ pub async fn create_cronjob(
         "Creating job for imagesync: {}",
         obj.metadata.name.as_ref().unwrap()
     );
-    let cronjob = generate_cronjob_object(obj, debug, config).await;
-    cronjobs
-        .create(&Default::default(), &cronjob)
-        .await
-        .unwrap();
+    let mut cronjob = generate_cronjob_object(obj, debug, config).await;
+    cronjob.metadata.owner_references = Some(vec![obj.controller_reference()?]);
+    cronjobs.create(&Default::default(), &cronjob).await?;
     Ok(())
-}
-
-/// Return Time of last successful run of the CronJob, so we can update the status.
-pub async fn cronjob_get_last_success(obj: ImageSync) -> Option<Time> {
-    let cronjobs = get_cronjob_for_imagesync(&obj, &Client::try_default().await.unwrap())
-        .await
-        .unwrap();
-    if let Some(cronjob) = cronjobs
-        && let Some(status) = cronjob.status
-        && let Some(last_success) = status.last_successful_time
-    {
-        return Some(last_success);
-    }
-    None
 }
 
 /// Checks if the given CronJob's spec matches the spec we would expect for a given ImageSync CR.
@@ -244,11 +226,9 @@ pub async fn is_cronjob_spec_correct(
 ) -> bool {
     let expected_cronjob =
         generate_cronjob_object(obj, std::env::var("DEBUG").is_ok(), config).await;
-    if let expected_spec = expected_cronjob.spec
-        && let actual_spec = &cronjob.spec
+    if let Some(local_expected_spec) = expected_cronjob.spec
+        && let Some(local_actual_spec) = &cronjob.spec
     {
-        let local_actual_spec = actual_spec.as_ref().unwrap().clone();
-        let local_expected_spec = expected_spec.as_ref().unwrap().clone();
         if !local_expected_spec.schedule.eq(&local_actual_spec.schedule) {
             println!(
                 "CronJob schedule does not match expected: {} != {}",
@@ -269,16 +249,28 @@ pub async fn is_cronjob_spec_correct(
             if let Some(expected_pod_spec) = expected_job_template.template.spec
                 && let Some(actual_pod_spec) = &actual_job_template.template.spec
             {
-                
-                let expected_src_cred_volume = expected_pod_spec.volumes.as_ref().unwrap().iter().find(|v| v.name == "creds-src");
-                let actual_src_cred_volume = actual_pod_spec.volumes.as_ref().unwrap().iter().find(|v| v.name == "creds-src");
-                let expected_dest_cred_volume = expected_pod_spec.volumes.as_ref().unwrap().iter().find(|v| v.name == "creds-dest");
-                let actual_dest_cred_volume = actual_pod_spec.volumes.as_ref().unwrap().iter().find(|v| v.name == "creds-dest");
+                let expected_volumes = expected_pod_spec.volumes.as_deref().unwrap_or_default();
+                let actual_volumes = actual_pod_spec.volumes.as_deref().unwrap_or_default();
+                let expected_src_cred_volume =
+                    expected_volumes.iter().find(|v| v.name == "creds-src");
+                let actual_src_cred_volume = actual_volumes.iter().find(|v| v.name == "creds-src");
+                let expected_dest_cred_volume =
+                    expected_volumes.iter().find(|v| v.name == "creds-dest");
+                let actual_dest_cred_volume =
+                    actual_volumes.iter().find(|v| v.name == "creds-dest");
+                if actual_src_cred_volume.is_none() || actual_dest_cred_volume.is_none() {
+                    println!("CronJob is missing credential volumes");
+                    return false;
+                }
                 // Compare the source and destination credential volumes, which are optional. We have to explicitly check the secret_name field of the SecretVolumeSource, because the cluster likes to fill in default values.
-                let expected_src_secret_name = expected_src_cred_volume.and_then(|v| v.secret.as_ref().and_then(|s| s.secret_name.clone()));
-                let actual_src_secret_name = actual_src_cred_volume.and_then(|v| v.secret.as_ref().and_then(|s| s.secret_name.clone()));
-                let expected_dest_secret_name = expected_dest_cred_volume.and_then(|v| v.secret.as_ref().and_then(|s| s.secret_name.clone()));
-                let actual_dest_secret_name = actual_dest_cred_volume.and_then(|v| v.secret.as_ref().and_then(|s| s.secret_name.clone()));
+                let expected_src_secret_name = expected_src_cred_volume
+                    .and_then(|v| v.secret.as_ref().and_then(|s| s.secret_name.clone()));
+                let actual_src_secret_name = actual_src_cred_volume
+                    .and_then(|v| v.secret.as_ref().and_then(|s| s.secret_name.clone()));
+                let expected_dest_secret_name = expected_dest_cred_volume
+                    .and_then(|v| v.secret.as_ref().and_then(|s| s.secret_name.clone()));
+                let actual_dest_secret_name = actual_dest_cred_volume
+                    .and_then(|v| v.secret.as_ref().and_then(|s| s.secret_name.clone()));
                 if expected_src_secret_name != actual_src_secret_name {
                     println!(
                         "CronJob source credential secret name does not match expected: {:?} != {:?}",
@@ -293,31 +285,44 @@ pub async fn is_cronjob_spec_correct(
                     );
                     return false;
                 }
-                if !expected_pod_spec.containers[0].image.eq(&actual_pod_spec.containers[0].image) {
+                let (Some(expected_container), Some(actual_container)) = (
+                    expected_pod_spec.containers.first(),
+                    actual_pod_spec.containers.first(),
+                ) else {
+                    println!("CronJob is missing its container");
+                    return false;
+                };
+                if !expected_container.image.eq(&actual_container.image) {
                     println!(
                         "CronJob container image does not match expected: {:?} != {:?}",
-                        expected_pod_spec.containers[0].image, actual_pod_spec.containers[0].image
+                        expected_container.image, actual_container.image
                     );
                     return false;
                 }
-                if !expected_pod_spec.containers[0].command.eq(&actual_pod_spec.containers[0].command) {
+                if !expected_container.command.eq(&actual_container.command) {
                     println!(
                         "CronJob container command does not match expected: {:?} != {:?}",
-                        expected_pod_spec.containers[0].command, actual_pod_spec.containers[0].command
+                        expected_container.command, actual_container.command
                     );
                     return false;
                 }
-                if !expected_pod_spec.containers[0].image_pull_policy.eq(&actual_pod_spec.containers[0].image_pull_policy) {
+                if !expected_container
+                    .image_pull_policy
+                    .eq(&actual_container.image_pull_policy)
+                {
                     println!(
                         "CronJob container image_pull_policy does not match expected: {:?} != {:?}",
-                        expected_pod_spec.containers[0].image_pull_policy, actual_pod_spec.containers[0].image_pull_policy
+                        expected_container.image_pull_policy, actual_container.image_pull_policy
                     );
                     return false;
                 }
-                if !expected_pod_spec.containers[0].volume_mounts.eq(&actual_pod_spec.containers[0].volume_mounts) {
+                if !expected_container
+                    .volume_mounts
+                    .eq(&actual_container.volume_mounts)
+                {
                     println!(
                         "CronJob container volume_mounts do not match expected: {:?} != {:?}",
-                        expected_pod_spec.containers[0].volume_mounts, actual_pod_spec.containers[0].volume_mounts
+                        expected_container.volume_mounts, actual_container.volume_mounts
                     );
                     return false;
                 }

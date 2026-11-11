@@ -4,6 +4,7 @@
 Utility functions for the reconciler loop.
 */
 
+use crate::error::OpError;
 use crate::imagesync::{ImageSync, ImageSyncSpec, ImageSyncStatus};
 use k8s_openapi::api::batch::v1::Job;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
@@ -14,7 +15,7 @@ use regex::Regex;
 /// Checks if the spec of the ImageSync CR has changed since the last time it was applied. Returns true if it has changed, false otherwise.
 ///
 /// All this function does is convert the spec and status.last_applied_config to JSON and compare them. If they are equal, then the spec has not changed. If they are not equal, then the spec has changed.
-pub async fn has_config_changed(obj: &ImageSync) -> Result<bool, Box<dyn std::error::Error>> {
+pub async fn has_config_changed(obj: &ImageSync) -> Result<bool, OpError> {
     let spec_json = serde_json::to_value(obj.spec.clone())?;
     if let Some(status) = &obj.status
         && let Some(last_applied_config) = Some(status.clone().last_applied_config)
@@ -35,10 +36,10 @@ pub async fn update_status(
     ready: bool,
     accepted_message: String,
     last_completion_time: Option<Time>,
-    _client: &Client,
-) -> Result<(), Box<dyn std::error::Error>> {
+    client: &Client,
+) -> Result<(), OpError> {
     let imagesyncs: Api<ImageSync> = Api::namespaced(
-        kube::Client::try_default().await.unwrap(),
+        client.clone(),
         obj.metadata.namespace.as_ref().unwrap().as_str(),
     );
     println!(
@@ -81,8 +82,7 @@ pub async fn update_status(
                 obj.metadata.name.as_ref().unwrap(),
                 e
             );
-            println!("{}", serde_json::to_string_pretty(&patched_obj).unwrap());
-            Err(Box::new(e))
+            Err(OpError::from(e))
         }
     }
 }
@@ -90,50 +90,43 @@ pub async fn update_status(
 /// When the ImageSync spec has changed, we need to reset the status to not accepted.
 ///
 /// This function simply calls the update_status function with the appropriate values to reset the status to not accepted.
-pub async fn reset_to_not_accepted(
-    obj: &ImageSync,
-    client: &Client,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!(
-        "Resetting ImageSync {} to not accepted",
-        obj.metadata.name.clone().unwrap()
-    );
-    let basename = if obj.metadata.name.as_ref().unwrap().len() > 50 {
-        obj.metadata.name.as_ref().unwrap()[0..50].to_string()
+pub async fn reset_to_not_accepted(obj: &ImageSync, client: &Client) -> Result<(), OpError> {
+    let is_name = obj.metadata.name.as_ref().unwrap();
+    println!("Resetting ImageSync {} to not accepted", is_name);
+    let basename = if is_name.len() > 50 {
+        is_name[0..50].to_string()
     } else {
-        obj.metadata.name.as_ref().unwrap().to_string()
+        is_name.to_string()
     };
     let jobs = Api::<Job>::namespaced(client.clone(), obj.metadata.namespace.as_ref().unwrap());
     let cronjobs = Api::<k8s_openapi::api::batch::v1::CronJob>::namespaced(
         client.clone(),
         obj.metadata.namespace.as_ref().unwrap(),
     );
-    if jobs.get(obj.metadata.name.as_ref().unwrap()).await.is_ok() {
+    let resource_name = format!("imagesync-{}", basename);
+    let job_exists = match jobs.get(&resource_name).await {
+        Ok(_) => true,
+        Err(kube::Error::Api(error)) if error.code == 404 => false,
+        Err(error) => return Err(error.into()),
+    };
+    if job_exists {
         println!(
             "Deleting job imagesync-{} because the spec has changed",
             basename
         );
-        jobs.delete(
-            format!("imagesync-{}", basename).as_str(),
-            &Default::default(),
-        )
-        .await?;
+        jobs.delete(&resource_name, &Default::default()).await?;
     }
-    if cronjobs
-        .get(obj.metadata.name.as_ref().unwrap())
-        .await
-        .is_ok()
-    {
+    let cronjob_exists = match cronjobs.get(&resource_name).await {
+        Ok(_) => true,
+        Err(kube::Error::Api(error)) if error.code == 404 => false,
+        Err(error) => return Err(error.into()),
+    };
+    if cronjob_exists {
         println!(
             "Deleting cronjob imagesync-{} because the spec has changed",
             basename
         );
-        cronjobs
-            .delete(
-                format!("imagesync-{}", basename).as_str(),
-                &Default::default(),
-            )
-            .await?;
+        cronjobs.delete(&resource_name, &Default::default()).await?;
     }
     update_status(
         obj.clone(),
@@ -152,10 +145,7 @@ pub async fn reset_to_not_accepted(
 /// Whenever the spec changes, we need to verify that it's valid and that the secrets exist.
 /// This function returns true if the spec is valid and false otherwise.
 /// It also calls the update_status function to update the status of the ImageSync CR with the results of the acceptance checks.
-pub async fn acceptance_checks(
-    obj: &ImageSync,
-    client: &Client,
-) -> Result<bool, Box<dyn std::error::Error>> {
+pub async fn acceptance_checks(obj: &ImageSync, client: &Client) -> Result<bool, OpError> {
     let mut source_secret_okay = true;
     let mut source_secret_message = String::new();
     let mut dest_secret_okay = true;

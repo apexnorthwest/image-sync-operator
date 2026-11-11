@@ -22,9 +22,12 @@ pub struct SkopeoConfig {
     pub ca_trust_bundle: Option<String>,
 }
 
-/// Read the config file from /config/config.yaml and return a Config struct. This is used lazily by the main loop to read the config at startup.
+/// Read the config file and return a Config struct. This is used lazily by the main loop to read the config at startup.
+///
+/// The file is read from /config/config.yaml unless the IMAGE_SYNC_OPERATOR_CONFIG environment variable overrides the path (primarily used by the test suite).
 pub fn read_config_file() -> Result<Config, Box<dyn std::error::Error>> {
-    let config_file_path = "/config/config.yaml";
+    let config_file_path = std::env::var("IMAGE_SYNC_OPERATOR_CONFIG")
+        .unwrap_or_else(|_| String::from("/config/config.yaml"));
     let config_content = fs::read_to_string(config_file_path)?;
     let config: Config = yaml_serde::from_str(&config_content)?;
     Ok(config)

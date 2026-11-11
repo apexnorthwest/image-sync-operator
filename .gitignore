@@ -1,2 +1,8 @@
 **/.vscode
 /target
+
+# Python test suite
+tests/.venv/
+tests/__pycache__/
+tests/.pytest_cache/
+tests/.ruff_cache/
