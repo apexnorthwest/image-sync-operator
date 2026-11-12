@@ -25,7 +25,7 @@ from kmock import KubernetesEmulator, KubernetesError, resource
 from kmock._internal import enums, rendering
 from kmock._internal.references import ResourceInfo
 
-CRD_PATH = pathlib.Path(__file__).resolve().parent.parent / "crds" / "imagesyncs.yaml"
+CRD_PATH = pathlib.Path(__file__).resolve().parents[2] / "crds" / "imagesyncs.yaml"
 
 GROUP = "imagesync.apexnw.dev"
 IMAGESYNCS = resource(GROUP, "v1alpha1", "imagesyncs")

@@ -21,7 +21,7 @@ import sys
 from categories import CATEGORIES
 
 HERE = pathlib.Path(__file__).resolve().parent
-REPO = HERE.parent
+REPO = HERE.parent.parent
 
 
 def parse_args() -> argparse.Namespace:

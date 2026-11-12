@@ -13,7 +13,7 @@ import yaml
 
 from fakek8s import FakeCluster, timestamp
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 DEFAULT_BINARY = REPO_ROOT / "target" / "debug" / "image-sync-operator"
 NAMESPACE = "ns1"
 

@@ -28,9 +28,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install test dependencies
-        working-directory: tests
+        working-directory: tests/kmock
         run: uv sync --locked
 
       - name: Run full integration suite
-        working-directory: tests
+        working-directory: tests/kmock
         run: uv run --locked python run_tests.py --slow -j 2

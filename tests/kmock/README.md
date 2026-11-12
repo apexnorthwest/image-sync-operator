@@ -8,7 +8,7 @@ The KMock integration test workflow runs the full suite, including slow tests, o
 and can also be started manually.
 
 ```sh
-cd tests
+cd tests/kmock
 ./run_tests.py                       # build the operator, run everything except slow tests
 ./run_tests.py --slow                # include tests that wait on the operator's 30s/60s timers
 ./run_tests.py -c job -c retry       # categories (see --list)

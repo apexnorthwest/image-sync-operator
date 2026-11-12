@@ -1,0 +1,28 @@
+[project]
+name = "image-sync-operator-kind-tests"
+version = "0.1.0"
+description = "Real Kubernetes integration tests for image-sync-operator"
+requires-python = ">=3.12"
+dependencies = ["bcrypt>=4", "pytest>=8", "pyyaml>=6", "types-pyyaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+addopts = "-ra"
+markers = [
+    "retry: waits for native Job backoff and the operator's ten-minute retry timer",
+    "cronjob: exercises actual Kubernetes CronJob scheduling",
+]
+
+[tool.ruff]
+line-length = 130
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "SIM", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cluster", "conftest"]
+
+[tool.ty.environment]
+python = ".venv"
+extra-paths = ["."]
