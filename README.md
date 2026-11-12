@@ -11,7 +11,7 @@ To accomplish this, the operator creates Jobs and CronJobs that leverage Skopeo 
 The operator fully supports cluster-scoped, namespace-scoped, and multi-namespace-scoped modes. The operator only permits one instance to run in a given namespace to avoid collisions.
 
 ## Usage
-This project is still a work in progress, and should be considered pre-alpha. Until this
+This project is still a work in progress, and should be considered beta. Until this
 notice is removed, we do not suggest using this code for anything other than experimental
 purposes.
 

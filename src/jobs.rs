@@ -4,6 +4,7 @@
 //! This only controls the one-shot and initial jobs.
 
 use crate::config::SkopeoConfig;
+use crate::error::{OpError, Result};
 use crate::imagesync::ImageSync;
 use k8s_openapi::api::batch::v1::{Job, JobSpec};
 use k8s_openapi::api::core::v1::{
@@ -14,7 +15,7 @@ use kube::{Api, Client};
 use std::collections::BTreeMap;
 
 /// Delete the given job from the Kubernetes cluster.
-pub async fn delete_job(job: &Job, client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn delete_job(job: &Job, client: &Client) -> Result<(), OpError> {
     let jobs: Api<Job> = Api::namespaced(client.clone(), job.metadata.namespace.as_ref().unwrap());
     let del_params = kube::api::DeleteParams {
         propagation_policy: Some(kube::api::PropagationPolicy::Foreground),
@@ -34,7 +35,7 @@ pub async fn delete_job(job: &Job, client: &Client) -> Result<(), Box<dyn std::e
                 job.metadata.name.as_ref().unwrap(),
                 e
             );
-            Err(Box::new(e))
+            Err(OpError::from(e))
         }
     }
 }
@@ -45,7 +46,7 @@ pub async fn delete_job(job: &Job, client: &Client) -> Result<(), Box<dyn std::e
 pub async fn get_job_for_imagesync(
     obj: &ImageSync,
     client: &Client,
-) -> Result<Option<Job>, Box<dyn std::error::Error>> {
+) -> Result<Option<Job>, OpError> {
     let jobs: Api<Job> = Api::namespaced(
         client.clone(),
         obj.metadata.namespace.as_ref().unwrap().as_str(),
@@ -60,7 +61,14 @@ pub async fn get_job_for_imagesync(
             &kube::api::ListParams::default()
                 .labels(&format!("imagesync.apexnw.dev/imagesync={}", basename)),
         )
-        .await?;
+        .await;
+    let joblist = match joblist {
+        Ok(list) => list,
+        Err(e) => {
+            eprintln!("Failed to list jobs for ImageSync {}: {}", basename, e);
+            return Err(OpError::from(e));
+        }
+    };
     if joblist.items.len() == 1 {
         Ok(Some(joblist.items[0].clone()))
     } else if joblist.items.len() > 1 {
@@ -68,9 +76,9 @@ pub async fn get_job_for_imagesync(
             "Found multiple jobs for ImageSync {}. This should not happen.",
             basename
         );
-        Err(Box::new(std::io::Error::other(
-            "Multiple jobs found for ImageSync",
-        )))
+        Err(OpError::from(
+            "Multiple jobs found for ImageSync".to_string(),
+        ))
     } else {
         Ok(None)
     }
@@ -83,7 +91,7 @@ pub async fn create_job(
     obj: &ImageSync,
     config: &SkopeoConfig,
     client: &Client,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), OpError> {
     let debug = std::env::var("DEBUG").is_ok();
     let jobs: Api<Job> = Api::namespaced(
         client.clone(),
@@ -139,6 +147,7 @@ skopeo copy --src-cert-dir /etc/pki/ca-trust/extracted/pem --dest-cert-dir /etc/
     let job = Job {
         metadata: ObjectMeta {
             name: Some(format!("imagesync-{}", basename)),
+            owner_references: Some(vec![obj.controller_reference()?]),
             labels: Some(BTreeMap::from([(
                 "imagesync.apexnw.dev/imagesync".to_string(),
                 basename.clone(),
@@ -188,7 +197,7 @@ skopeo copy --src-cert-dir /etc/pki/ca-trust/extracted/pem --dest-cert-dir /etc/
         }),
         status: None,
     };
-    jobs.create(&Default::default(), &job).await.unwrap();
+    jobs.create(&Default::default(), &job).await?;
     Ok(())
 }
 

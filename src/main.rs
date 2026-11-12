@@ -114,12 +114,15 @@ The reconciler is the primary logic for the operator and leverages functions in 
 
 mod config;
 mod cronjobs;
+mod error;
 mod imagesync;
 mod jobs;
 mod reconciler;
 
 use crate::config::Config;
 use crate::config::read_config_file;
+use crate::error::OpError;
+use crate::error::Result;
 use crate::imagesync::ImageSync;
 
 use futures::StreamExt;
@@ -133,12 +136,6 @@ use kube_lease_manager::LeaseManagerBuilder;
 use once_cell::sync::Lazy;
 use rustls::crypto::aws_lc_rs;
 use std::{sync::Arc, time::Duration};
-
-/// Catchall error type for the operator.
-#[derive(thiserror::Error, Debug)]
-pub enum Error {}
-
-pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Global config object. This is ready lazily from /config/config.yaml and is used to set global config options in the operator.
 pub static CONFIG: Lazy<Config> =
@@ -203,12 +200,13 @@ async fn main() -> Result<(), kube::Error> {
                         .run(reconcile, error_policy, Arc::new(()))
                         .for_each(|_| futures::future::ready(())).await;
                 } else {
-                    for ns in imagesyncs.iter() {
+                    let controllers = imagesyncs.iter().map(|ns| {
                         println!("Starting controller for namespace: {}", ns.namespace().unwrap());
                         Controller::new(ns.clone(), Default::default())
                             .run(reconcile, error_policy, Arc::new(()))
-                            .for_each(|_| futures::future::ready(())).await;
-                    }
+                            .for_each(|_| futures::future::ready(()))
+                    });
+                    futures::future::join_all(controllers).await;
                 }
             }
         }
@@ -234,60 +232,65 @@ async fn main() -> Result<(), kube::Error> {
 ///
 /// This function is not meant to be called from anywhere other than the controller thread.
 async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
-    // Configure K8s api connection
-    let client = Client::try_default().await.unwrap();
+    // Init local variables to reduce the number of times we have to access the Arc
+    let namespace = obj
+        .metadata
+        .namespace
+        .as_ref()
+        .ok_or_else(|| OpError::from("ImageSync is missing its namespace".to_string()))?
+        .clone();
+    let name = obj
+        .metadata
+        .name
+        .as_ref()
+        .ok_or_else(|| OpError::from("ImageSync is missing its name".to_string()))?
+        .clone();
 
-    let imagesyncs: Api<ImageSync> =
-        Api::namespaced(client.clone(), obj.metadata.namespace.as_ref().unwrap());
+    // Configure K8s api connection
+    let client = Client::try_default().await?;
+
+    let imagesyncs: Api<ImageSync> = Api::namespaced(client.clone(), &namespace);
 
     // Check if the imagesync still exists
-    match imagesyncs.get(obj.metadata.name.as_ref().unwrap()).await {
+    match imagesyncs.get(&name).await {
         Ok(_) => {
             // ImageSync still exists, continue processing
         }
         Err(kube::Error::Api(e)) if e.code == 404 => {
             println!(
                 "ImageSync {} in namespace {} has been deleted. Cleaning up.",
-                obj.metadata.name.as_ref().unwrap(),
-                obj.metadata.namespace.as_ref().unwrap()
+                name, namespace
             );
             // Delete any jobs or cronjobs that might exist for this ImageSync
-            let job = jobs::get_job_for_imagesync(&obj, &client).await.unwrap();
+            let job = jobs::get_job_for_imagesync(&obj, &client).await?;
             if let Some(job) = job {
-                jobs::delete_job(&job, &client).await.unwrap();
+                jobs::delete_job(&job, &client).await?;
             }
-            let cronjob = cronjobs::get_cronjob_for_imagesync(&obj, &client)
-                .await
-                .unwrap();
+            let cronjob = cronjobs::get_cronjob_for_imagesync(&obj, &client).await?;
             if let Some(cronjob) = cronjob {
-                cronjobs::delete_cronjob(&cronjob, &client).await.unwrap();
+                cronjobs::delete_cronjob(&cronjob, &client).await?;
             }
             return Ok(Action::await_change());
         }
         Err(e) => {
             eprintln!(
                 "Error getting ImageSync {} in namespace {}: {}",
-                obj.metadata.name.as_ref().unwrap(),
-                obj.metadata.namespace.as_ref().unwrap(),
-                e
+                name, namespace, e
             );
-            return Ok(Action::requeue(Duration::from_secs(30)));
+            return Err(e.into());
         }
     }
 
     // Check if the config has changed or is new
-    if reconciler::has_config_changed(&obj).await.unwrap() {
+    if reconciler::has_config_changed(&obj).await? {
         println!(
             "Spec of ImageSync {} in namespace {} has changed. Resetting status and deleting any jobs or cronjobs.",
-            obj.metadata.name.as_ref().unwrap(),
-            obj.metadata.namespace.as_ref().unwrap()
+            name, namespace
         );
         // Spec has changed, reset status and delete any job or cronjob that might exist
-        reconciler::reset_to_not_accepted(&obj, &client)
-            .await
-            .unwrap();
+        reconciler::reset_to_not_accepted(&obj, &client).await?;
         // Run acceptance checks on the new spec and update status accordingly
-        if reconciler::acceptance_checks(&obj, &client).await.unwrap() {
+        if reconciler::acceptance_checks(&obj, &client).await? {
             // Immediate requeue to process the new spec
             return Ok(Action::requeue(Duration::ZERO));
         } else {
@@ -297,9 +300,14 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
     }
 
     // Check if we are Accepted or not
-    if !obj.status.as_ref().unwrap().accepted {
+    let status = obj.status.as_ref().ok_or_else(|| {
+        OpError::from(format!(
+            "ImageSync {name} has no status after configuration validation"
+        ))
+    })?;
+    if !status.accepted {
         // Run acceptance checks
-        if reconciler::acceptance_checks(&obj, &client).await.unwrap() {
+        if reconciler::acceptance_checks(&obj, &client).await? {
             // Immediate requeue to process the new spec
             return Ok(Action::requeue(Duration::ZERO));
         } else {
@@ -309,28 +317,24 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
     }
 
     // Process the CR when it's both accepted and ready
-    if obj.status.as_ref().unwrap().ready {
+    if status.ready {
         if obj.spec.cron_schedule.is_some() {
-            let cronjob = cronjobs::get_cronjob_for_imagesync(&obj, &client)
-                .await
-                .unwrap();
+            let cronjob = cronjobs::get_cronjob_for_imagesync(&obj, &client).await?;
             if let Some(existing_cronjob) = cronjob {
                 // CronJob exists, assert that the spec is correct with what's in the CR.
                 if !cronjobs::is_cronjob_spec_correct(&obj, &existing_cronjob, &CONFIG.skopeo).await
                 {
                     // CronJob spec is incorrect, delete it and recreate it.
-                    cronjobs::delete_cronjob(&existing_cronjob, &client)
-                        .await
-                        .unwrap();
-                    cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client)
-                        .await
-                        .unwrap();
+                    cronjobs::delete_cronjob(&existing_cronjob, &client).await?;
+                    cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client).await?;
                     // Normal requeue
                     return Ok(Action::requeue(Duration::from_secs(30)));
                 } else {
                     // CronJob spec is correct, update the status with the last successful run time.
-                    let last_success =
-                        cronjobs::cronjob_get_last_success(obj.as_ref().clone()).await;
+                    let last_success = existing_cronjob
+                        .status
+                        .as_ref()
+                        .and_then(|status| status.last_successful_time.clone());
                     reconciler::update_status(
                         obj.as_ref().clone(),
                         true,
@@ -339,14 +343,11 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
                         last_success,
                         &client,
                     )
-                    .await
-                    .unwrap();
+                    .await?;
                     return Ok(Action::requeue(Duration::from_secs(30)));
                 }
             } else {
-                cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client)
-                    .await
-                    .unwrap();
+                cronjobs::create_cronjob(&obj, &CONFIG.skopeo, &client).await?;
                 // Standard requeue
                 return Ok(Action::requeue(Duration::from_secs(30)));
             }
@@ -357,42 +358,36 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
     }
 
     // If the CR is accepted but not ready, we need to create a one-shot job to process it. We always fire a one-shot, even when the job is scheduled.
-    let job = jobs::get_job_for_imagesync(&obj, &client).await.unwrap();
-
+    let job = jobs::get_job_for_imagesync(&obj, &client).await?;
     // Create job when absent
-    if job.is_none() {
-        jobs::create_job(&obj, &CONFIG.skopeo, &client)
-            .await
-            .unwrap();
-        // Fast requeue to watch the job status
+    let Some(job) = job else {
+        jobs::create_job(&obj, &CONFIG.skopeo, &client).await?;
         return Ok(Action::requeue(Duration::from_secs(5)));
-    }
+    };
 
     // If we get here, the job exists. Check its status.
-    if jobs::is_job_complete(job.as_ref().unwrap()).await {
+    if jobs::is_job_complete(&job).await {
         // Job is not running, check if it succeeded or failed
-        if jobs::is_job_failed(job.as_ref().unwrap()).await {
+        if jobs::is_job_failed(&job).await {
             // Job failed. Check how long ago the job failed. If it was more than 10 minutes ago we will delete it to retry.
             let failure_time = job
-                .as_ref()
-                .unwrap()
                 .status
                 .as_ref()
-                .unwrap()
-                .conditions
-                .as_ref()
-                .unwrap()
-                .iter()
-                .find(|c| c.type_ == "Failed")
-                .unwrap()
-                .last_transition_time
-                .as_ref()
-                .unwrap();
+                .and_then(|status| status.conditions.as_ref())
+                .and_then(|conditions| {
+                    conditions
+                        .iter()
+                        .find(|c| c.type_ == "Failed" && c.status == "True")
+                })
+                .and_then(|condition| condition.last_transition_time.as_ref())
+                .ok_or_else(|| {
+                    OpError::from(format!(
+                        "Failed Job for ImageSync {name} has no failure transition time"
+                    ))
+                })?;
             if failure_time.0.duration_until(Timestamp::now()).as_mins() > 10 {
                 // Delete the job to retry
-                jobs::delete_job(job.as_ref().unwrap(), &client)
-                    .await
-                    .unwrap();
+                jobs::delete_job(&job, &client).await?;
                 // Fast requeue to watch the job status
                 reconciler::update_status(
                     obj.as_ref().clone(),
@@ -402,8 +397,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
                     None,
                     &client,
                 )
-                .await
-                .unwrap();
+                .await?;
                 Ok(Action::requeue(Duration::from_secs(5)))
             } else {
                 reconciler::update_status(
@@ -414,8 +408,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
                     None,
                     &client,
                 )
-                .await
-                .unwrap();
+                .await?;
                 // Normal requeue to check the job status again
                 Ok(Action::requeue(Duration::from_secs(30)))
             }
@@ -427,19 +420,18 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
                 true,
                 String::from("ImageSync job completed successfully"),
                 Some(
-                    job.as_ref()
-                        .unwrap()
-                        .status
+                    job.status
                         .as_ref()
-                        .unwrap()
-                        .completion_time
-                        .clone()
-                        .unwrap(),
+                        .and_then(|status| status.completion_time.clone())
+                        .ok_or_else(|| {
+                            OpError::from(format!(
+                                "Completed Job for ImageSync {name} has no completion time"
+                            ))
+                        })?,
                 ),
                 &client,
             )
-            .await
-            .unwrap();
+            .await?;
             // Fast requeue since we don't know if we need to create a CronJob or not.
             Ok(Action::requeue(Duration::from_secs(5)))
         }
@@ -453,8 +445,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
             None,
             &client,
         )
-        .await
-        .unwrap();
+        .await?;
         // Fast requeue to watch the job status
         Ok(Action::requeue(Duration::from_secs(5)))
     }
@@ -462,7 +453,7 @@ async fn reconcile(obj: Arc<ImageSync>, _ctx: Arc<()>) -> Result<Action> {
 
 /// This function is called when the reconciler encounters an error. In this case, we simply retry the reconcile after 30 seconds.
 /// Because the reconciler is idempotent, this is safe to do. The error is logged by the controller runtime.
-fn error_policy(_object: Arc<ImageSync>, _err: &Error, _ctx: Arc<()>) -> Action {
+fn error_policy(_object: Arc<ImageSync>, _err: &OpError, _ctx: Arc<()>) -> Action {
     eprintln!("Reconcile error: {:?} on {:?}", _err, _object.metadata.name);
     Action::requeue(Duration::from_secs(30))
 }

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! This module contains the ImageSync object type and all configuration required to make serde behave.
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
-use kube::CustomResource;
+use crate::error::{OpError, Result};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{OwnerReference, Time};
+use kube::{CustomResource, Resource};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -55,4 +56,12 @@ pub struct ImageSyncStatus {
     #[serde(rename = "lastCompletionTime")]
     pub last_completion_time: Option<Time>,
     pub message: String,
+}
+
+impl ImageSync {
+    pub fn controller_reference(&self) -> Result<OwnerReference, OpError> {
+        self.controller_owner_ref(&()).ok_or_else(|| {
+            OpError::from("ImageSync is missing the name or UID required for an owner reference".to_string())
+        })
+    }
 }
