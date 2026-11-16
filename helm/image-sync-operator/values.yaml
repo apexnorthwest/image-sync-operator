@@ -6,7 +6,7 @@ operator:
   # Image url to pull from
   image: 
     repository: "ghcr.io/apexnorthwest/image-sync-operator"
-    tag: "0.1.0"
+    tag: "0.2.1"
     pullPolicy: "IfNotPresent"
   # Enable for debug logging
   debug: false
