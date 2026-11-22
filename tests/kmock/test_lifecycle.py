@@ -302,12 +302,21 @@ async def test_deleting_an_imagesync_does_not_crash_the_operator(
 
 
 async def test_recreated_imagesync_is_processed_again(cluster: FakeCluster, api: ApiClient, operator: OperatorProcess) -> None:
-    await api.create("imagesyncs", NAMESPACE, imagesync())
+    code, original = await api.create("imagesyncs", NAMESPACE, imagesync())
+    assert code == 200, original
     await wait_for(lambda: job_of(cluster), desc="job", operator=operator)
-    await api.delete("imagesyncs", NAMESPACE, "alpine")
+    assert await api.delete("imagesyncs", NAMESPACE, "alpine") == 200
     await wait_for(lambda: job_of(cluster) is None, desc="original job garbage collected", operator=operator)
-    await api.create("imagesyncs", NAMESPACE, imagesync())
-    await wait_for(lambda: len(cluster.calls_for("jobs", "create")) == 2, desc="second job", operator=operator)
+    code, recreated = await api.create("imagesyncs", NAMESPACE, imagesync())
+    assert code == 200, recreated
+    recreated_uid = recreated["metadata"]["uid"]
+    assert recreated_uid != original["metadata"]["uid"]
+    await wait_for(
+        lambda: (job := job_of(cluster))
+        and any(owner.get("uid") == recreated_uid for owner in job["metadata"].get("ownerReferences", [])),
+        desc="job owned by recreated ImageSync",
+        operator=operator,
+    )
 
 
 async def test_failing_sync_does_not_block_others(cluster: FakeCluster, api: ApiClient, operator: OperatorProcess) -> None:

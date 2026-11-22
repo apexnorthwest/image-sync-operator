@@ -102,10 +102,14 @@ async def test_cronjob_is_not_touched_when_correct(cluster: FakeCluster, api: Ap
 
 async def test_deleted_cronjob_is_recreated(cluster: FakeCluster, api: ApiClient, operator: OperatorProcess) -> None:
     await make_ready(cluster, api, operator, cronSchedule=SCHEDULE)
-    await _cronjob(cluster, operator)
+    previous_uid = (await _cronjob(cluster, operator))["metadata"]["uid"]
     assert await api.delete("cronjobs", NAMESPACE, "imagesync-alpine") == 200
-    await wait_for(lambda: len(cluster.calls_for("cronjobs", "create")) == 2, desc="recreate", operator=operator)
-    assert (await _cronjob(cluster, operator))["spec"]["schedule"] == SCHEDULE
+    cronjob = await wait_for(
+        lambda: (job := cronjob_of(cluster)) and job["metadata"]["uid"] != previous_uid and job,
+        desc="recreated cronjob",
+        operator=operator,
+    )
+    assert cronjob["spec"]["schedule"] == SCHEDULE
 
 
 def _container_patch(cluster: FakeCluster, mutate: Any) -> dict[str, Any]:
@@ -145,9 +149,12 @@ async def test_drifted_cronjob_is_replaced(cluster: FakeCluster, api: ApiClient,
     code, body = await api.patch("cronjobs", NAMESPACE, "imagesync-alpine", DRIFTS[drift](cluster))
     assert code == 200, body
     await api.patch("imagesyncs", NAMESPACE, "alpine", {"metadata": {"annotations": {"test/nudge": "1"}}})
-    await wait_for(lambda: len(cluster.calls_for("cronjobs", "create")) == 2, desc="cronjob replaced", operator=operator)
-    repaired = await _cronjob(cluster, operator)
     assert expected is not None
+    repaired = await wait_for(
+        lambda: (job := cronjob_of(cluster)) and job["metadata"]["uid"] != expected["metadata"]["uid"] and job,
+        desc="cronjob replaced",
+        operator=operator,
+    )
     assert repaired["spec"] == expected["spec"]
 
 
