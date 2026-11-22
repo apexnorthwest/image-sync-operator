@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 
 import pytest
+from aiohttp import web
 
 from conftest import StartOperator
 from fakek8s import ApiClient, FakeCluster
@@ -14,6 +15,7 @@ from harness import (
     apply_job_status,
     completed_job_status,
     cronjob_of,
+    default_config,
     failed_job_status,
     imagesync,
     job_of,
@@ -24,6 +26,55 @@ from harness import (
     stays_true,
     wait_for,
 )
+
+
+@pytest.mark.parametrize("cluster_scope", [False, True], ids=["namespaced", "cluster-scoped"])
+@pytest.mark.parametrize("action", ["list", "watch"])
+async def test_imagesync_watcher_rbac_failure_panics(
+    cluster: FakeCluster, start_operator: StartOperator, cluster_scope: bool, action: str
+) -> None:
+    fault = cluster.inject_fault("imagesyncs", action, 403)
+    operator = await start_operator(default_config(cluster_scope=cluster_scope))
+    assert await operator.wait_exit(timeout=15) != 0
+    assert fault.hits > 0
+    message = (
+        "ImageSync controller infrastructure failed"
+        if cluster_scope
+        else f"ImageSync controller in {NAMESPACE} failed"
+    )
+    assert message in operator.log
+    assert ("InitialListFailed" if action == "list" else "WatchStartFailed") in operator.log
+    assert "403" in operator.log
+
+
+@pytest.mark.parametrize("cluster_scope", [False, True], ids=["namespaced", "cluster-scoped"])
+@pytest.mark.parametrize("action", ["list", "watch"])
+async def test_imagesync_watcher_connection_loss_panics(
+    cluster: FakeCluster, start_operator: StartOperator, monkeypatch: pytest.MonkeyPatch, cluster_scope: bool, action: str
+) -> None:
+    original_handler = FakeCluster.__call__
+    disconnected: list[str] = []
+
+    async def disconnect(fake: FakeCluster, request: web.BaseRequest) -> web.StreamResponse:
+        is_watch = request.query.get("watch") == "true"
+        if request.path.endswith("/imagesyncs") and is_watch == (action == "watch"):
+            disconnected.append(request.path)
+            assert request.transport is not None
+            request.transport.abort()
+            return web.Response()
+        return await original_handler(fake, request)
+
+    monkeypatch.setattr(FakeCluster, "__call__", disconnect)
+    operator = await start_operator(default_config(cluster_scope=cluster_scope))
+    assert await operator.wait_exit(timeout=15) != 0
+    assert disconnected
+    message = (
+        "ImageSync controller infrastructure failed"
+        if cluster_scope
+        else f"ImageSync controller in {NAMESPACE} failed"
+    )
+    assert message in operator.log
+    assert ("InitialListFailed" if action == "list" else "WatchStartFailed") in operator.log
 
 
 async def test_imagesync_get_error_is_survived_and_retried(
@@ -54,14 +105,17 @@ async def test_secret_lookup_error_is_treated_as_missing_then_recovers(
     await wait_for(lambda: job_of(cluster), timeout=45, desc="job after recovery", operator=operator)
 
 
-async def test_failing_imagesync_list_does_not_create_work(
+async def test_failing_imagesync_list_panics_without_creating_work(
     cluster: FakeCluster, api: ApiClient, start_operator: StartOperator
 ) -> None:
     await api.create("imagesyncs", NAMESPACE, imagesync())
-    cluster.inject_fault("imagesyncs", "list", 500)
+    fault = cluster.inject_fault("imagesyncs", "list", 500)
     operator = await start_operator()
-    await stays_true(lambda: job_of(cluster) is None, duration=4, desc="no job while the list fails")
-    assert operator.running
+    assert await operator.wait_exit(timeout=15) != 0
+    assert fault.hits > 0
+    assert job_of(cluster) is None
+    assert f"ImageSync controller in {NAMESPACE} failed" in operator.log
+    assert "500" in operator.log
 
 
 async def test_imagesync_list_recovers_after_outage(cluster: FakeCluster, api: ApiClient, start_operator: StartOperator) -> None:

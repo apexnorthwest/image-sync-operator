@@ -198,13 +198,44 @@ async fn main() -> Result<(), kube::Error> {
                     println!("Starting controller for cluster-scoped ImageSyncs");
                     Controller::new(imagesyncs[0].clone(), Default::default())
                         .run(reconcile, error_policy, Arc::new(()))
-                        .for_each(|_| futures::future::ready(())).await;
+                        .for_each(|item| async {
+                            // We expect the loop to never exist, as the controller should run indefinitely
+                            // There are some errors that we expect to be able to safely ignore, some indicate
+                            // issues talking to the apiserver and on those or any unknown errors we want to panic out the process.
+                            match item {
+                                Ok(_) => {}
+                                Err(kube::runtime::controller::Error::ObjectNotFound(_)) => {}
+                                Err(kube::runtime::controller::Error::ReconcilerFailed(..)) => {}
+                                Err(err) => panic!("ImageSync controller infrastructure failed: {err:?}"),
+                            }
+                        })
+                        .await;
+                    // No shutdown path exists in this operator, so stream completion is abnormal
+                    panic!("cluster-scoped ImageSync controller stream terminated");
                 } else {
                     let controllers = imagesyncs.iter().map(|ns| {
-                        println!("Starting controller for namespace: {}", ns.namespace().unwrap());
-                        Controller::new(ns.clone(), Default::default())
-                            .run(reconcile, error_policy, Arc::new(()))
-                            .for_each(|_| futures::future::ready(()))
+                        let ns_name = ns.namespace().unwrap().to_string();
+                        println!("Starting controller for namespace: {ns_name}");
+                        let stream = Controller::new(ns.clone(), Default::default())
+                            .run(reconcile, error_policy, Arc::new(()));
+                        async move {
+                            let controller_ns_name = ns_name.clone();
+                            stream
+                                .for_each(move |item| {
+                                    let ns_name = controller_ns_name.clone();
+                                    async move {
+                                        // As mentioned above, we expect some errors but others are fatal.
+                                        match item {
+                                            Ok(_) => {}
+                                            Err(kube::runtime::controller::Error::ObjectNotFound(_)) => {}
+                                            Err(kube::runtime::controller::Error::ReconcilerFailed(..)) => {}
+                                            Err(err) => panic!("ImageSync controller in {ns_name} failed: {err:?}"),
+                                        }
+                                    }
+                                })
+                                .await;
+                            panic!("ImageSync controller watching {ns_name} terminated");
+                        }
                     });
                     futures::future::join_all(controllers).await;
                 }

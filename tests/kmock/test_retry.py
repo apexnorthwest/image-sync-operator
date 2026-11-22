@@ -34,10 +34,19 @@ async def _failed_sync(
     age_minutes: int = 0,
     reason: str = "BackoffLimitExceeded",
     **spec: Any,
-) -> None:
+) -> str:
     await api.create("imagesyncs", NAMESPACE, imagesync(**spec))
-    await wait_for(lambda: job_of(cluster), desc="job", operator=operator)
+    job = await wait_for(lambda: job_of(cluster), desc="job", operator=operator)
     await apply_job_status(api, failed_job_status(timestamp(-age_minutes * MINUTES), reason))
+    return job["metadata"]["uid"]
+
+
+async def _replacement_job(cluster: FakeCluster, operator: OperatorProcess, previous_uid: str) -> dict[str, Any]:
+    return await wait_for(
+        lambda: (job := job_of(cluster)) and job["metadata"]["uid"] != previous_uid and job,
+        desc="replacement job",
+        operator=operator,
+    )
 
 
 @pytest.mark.parametrize("reason", ["BackoffLimitExceeded", "DeadlineExceeded"], ids=["image-unavailable", "timeout"])
@@ -63,11 +72,10 @@ async def test_recent_failure_is_not_retried_yet(cluster: FakeCluster, api: ApiC
 
 
 async def test_old_failure_deletes_the_job_and_retries(cluster: FakeCluster, api: ApiClient, operator: OperatorProcess) -> None:
-    await _failed_sync(cluster, api, operator, age_minutes=11)
+    previous_uid = await _failed_sync(cluster, api, operator, age_minutes=11)
     deleted = (await wait_for(lambda: cluster.calls_for("jobs", "delete"), desc="job deletion", operator=operator))[0]
     assert deleted.name == "imagesync-alpine"
-    await wait_for(lambda: len(cluster.calls_for("jobs", "create")) == 2, desc="retry job", operator=operator)
-    job = await wait_for(lambda: job_of(cluster), desc="new job", operator=operator)
+    job = await _replacement_job(cluster, operator, previous_uid)
     assert "status" not in job or not job["status"].get("conditions")
     assert status_of(cluster)["accepted"] is True
     assert status_of(cluster)["ready"] is False
@@ -86,9 +94,8 @@ async def test_retry_message_is_published(cluster: FakeCluster, api: ApiClient, 
 
 
 async def test_retry_can_succeed(cluster: FakeCluster, api: ApiClient, operator: OperatorProcess) -> None:
-    await _failed_sync(cluster, api, operator, age_minutes=11)
-    await wait_for(lambda: len(cluster.calls_for("jobs", "create")) == 2, desc="retry job", operator=operator)
-    await wait_for(lambda: job_of(cluster) is not None, desc="new job present", operator=operator)
+    previous_uid = await _failed_sync(cluster, api, operator, age_minutes=11)
+    await _replacement_job(cluster, operator, previous_uid)
     finished = timestamp()
     await apply_job_status(api, completed_job_status(finished))
     status = await wait_for(lambda: status_of(cluster).get("ready") and status_of(cluster), desc="ready", operator=operator)
@@ -99,16 +106,11 @@ async def test_retry_can_succeed(cluster: FakeCluster, api: ApiClient, operator:
 async def test_retries_repeat_while_the_remote_stays_broken(
     cluster: FakeCluster, api: ApiClient, operator: OperatorProcess
 ) -> None:
-    await _failed_sync(cluster, api, operator, age_minutes=11)
-    for attempt in (2, 3):
-        await wait_for(
-            lambda attempt=attempt: len(cluster.calls_for("jobs", "create")) == attempt,
-            desc=f"attempt {attempt}",
-            operator=operator,
-        )
-        await wait_for(
-            lambda: (j := job_of(cluster)) is not None and not (j.get("status") or {}), desc="fresh job", operator=operator
-        )
+    previous_uid = await _failed_sync(cluster, api, operator, age_minutes=11)
+    for _ in (2, 3):
+        job = await _replacement_job(cluster, operator, previous_uid)
+        assert not job.get("status")
+        previous_uid = job["metadata"]["uid"]
         await apply_job_status(api, failed_job_status(timestamp(-12 * MINUTES)))
     assert len(cluster.calls_for("jobs", "delete")) >= 2
 
@@ -124,9 +126,8 @@ async def test_scheduled_sync_creates_no_cronjob_while_failing(
 async def test_scheduled_sync_gets_cronjob_after_retry_succeeds(
     cluster: FakeCluster, api: ApiClient, operator: OperatorProcess
 ) -> None:
-    await _failed_sync(cluster, api, operator, age_minutes=11, cronSchedule="*/15 * * * *")
-    await wait_for(lambda: len(cluster.calls_for("jobs", "create")) == 2, desc="retry job", operator=operator)
-    await wait_for(lambda: job_of(cluster) is not None, desc="new job present", operator=operator)
+    previous_uid = await _failed_sync(cluster, api, operator, age_minutes=11, cronSchedule="*/15 * * * *")
+    await _replacement_job(cluster, operator, previous_uid)
     await apply_job_status(api, completed_job_status())
     cronjob = await wait_for(lambda: cronjob_of(cluster), desc="cronjob", operator=operator)
     assert cronjob["spec"]["schedule"] == "*/15 * * * *"
