@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["Error"],"fn":["error_policy","main","reconcile"],"mod":["config","cronjobs","imagesync","jobs","reconciler"],"static":["CONFIG"],"type":["Result"]};
+window.SIDEBAR_ITEMS = {"fn":["error_policy","main","reconcile"],"mod":["config","cronjobs","error","imagesync","jobs","reconciler"],"static":["CONFIG"]};

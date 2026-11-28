@@ -8,16 +8,48 @@ Crate documentation for contributors can be found [here](doc/image_sync_operator
 
 All release images are signed with Cosign, available [here](https://github.com/sigstore/cosign)
 
-To verify the integrity of the image and helm chart:
+## Release Security
+
+Github released helm chart archives are signed with pgp, key 7C3165A81E6E0F5452473731536EB5AC1BB52D60, which is published on the ubuntu key server and in this repo as `releases.asc`.
+
+Container images are signed with cosign's public key which is in `cosign.pub` in this repo.
+
+If you want to verify the chart and image:
+
 ```sh
-curl -L https://apexnorthwest.github.io/image-sync-operator/cosign.pub > cosign.pub
-cosign verify --key cosign.pub ghcr.io/apexnorthwest/image-sync-operator:0.1.0
-cosign verify --key cosign.pub ghcr.io/apexnorthwest/charts/image-sync-operator:0.1.0
+docker pull ghcr.io/apexnorthwest/image-sync-operator:0.2.1
+curl -LO https://raw.githubusercontent.com/apexnorthwest/image-sync-operator/refs/heads/main/cosign.pub
+cosign verify --key cosign.pub ghcr.io/apexnorthwest/image-sync-operator:0.2.1
+
+gpg --receive-keys 7C3165A81E6E0F5452473731536EB5AC1BB52D60
+curl -LO https://apexnorthwest.github.io/image-sync-operator/charts/image-sync-operator-0.2.1.tgz
+curl -LO https://apexnorthwest.github.io/image-sync-operator/charts/image-sync-operator-0.2.1.tgz.sig
+gpg --verify image-sync-operator-0.2.1.tgz.sig
 ```
+
+You're looking for these two bits of information:
+```
+Verification for ghcr.io/apexnorthwest/image-sync-operator:0.2.1 --
+The following checks were performed on each of these signatures:
+  - The cosign claims were validated
+  - Existence of the claims in the transparency log was verified offline
+  - The signatures were verified against the specified public key
+```
+
+```
+gpg: assuming signed data in 'image-sync-operator-0.2.1.tgz'
+gpg: Signature made Fri 27 Nov 2026 08:31:51 PM MST
+gpg:                using RSA key 7C3165A81E6E0F5452473731536EB5AC1BB52D60
+gpg: Good signature from "Apex Northwest Releases (Release signing key) <admin@apexnorthwest.com>" [unknown]
+```
+
+GPG will complain the key isn't cross-trusted but that's normal in this case.
+
+## Installing
 
 To install the operator in single-namespace mode with the default settings you would do the following:
 ```sh
-helm repo add apexnw oci://ghcr.io/apexnorthwest/charts
+helm repo add apexnw https://apexnorthwest.github.io/image-sync-operator/charts
 helm install image-sync-operator apexnw/image-sync-operator -n image-sync-operator --create-namespace
 ```
 
@@ -31,7 +63,7 @@ operator:
   # Image url to pull from
   image: 
     repository: "ghcr.io/apexnorthwest/image-sync-operator"
-    tag: "0.1.0"
+    tag: "0.2.1"
     pullPolicy: "IfNotPresent"
   # Enable for debug logging. This is not recommended for production use but if you even need to open an issue
   # on the project then we will expect you to provide logs with this enabled.
@@ -79,6 +111,8 @@ rbac:
     - "default"
     - "some-other-application"
 ```
+
+## Using the Operator
 
 You would then create ImageSync CRs in that same namespace (as in this example we've installed the operator in restricted mode, as is the default)
 
