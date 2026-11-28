@@ -38,6 +38,43 @@ You may find our [code of conduct](CODE_OF_CONDUCT.md) and [contributor guidelin
 in this repo. We expect everyone to follow the guidelines and policies to ensure a positive,
 productive, and enjoyable experience for all involved.
 
+## Release Security
+
+Github released helm chart archives are signed with pgp, key 7C3165A81E6E0F5452473731536EB5AC1BB52D60, which is published on the ubuntu key server and in this repo as `releases.asc`.
+
+Container images are signed with cosign's public key which is in `cosign.pub` in this repo.
+
+If you want to verify the chart and image:
+
+```sh
+docker pull ghcr.io/apexnorthwest/image-sync-operator:0.2.1
+curl -LO https://raw.githubusercontent.com/apexnorthwest/image-sync-operator/refs/heads/main/cosign.pub
+cosign verify --key cosign.pub ghcr.io/apexnorthwest/image-sync-operator:0.2.1
+
+gpg --receive-keys 7C3165A81E6E0F5452473731536EB5AC1BB52D60
+curl -LO https://github.com/apexnorthwest/image-sync-operator/releases/download/v0.2.1/image-sync-operator-0.2.1.tgz
+curl -LO https://github.com/apexnorthwest/image-sync-operator/releases/download/v0.2.1/image-sync-operator-0.2.1.tgz.sig
+gpg --verify image-sync-operator-0.2.1.tgz.sig
+```
+
+You're looking for these two bits of information:
+```
+Verification for ghcr.io/apexnorthwest/image-sync-operator:dev --
+The following checks were performed on each of these signatures:
+  - The cosign claims were validated
+  - Existence of the claims in the transparency log was verified offline
+  - The signatures were verified against the specified public key
+```
+
+```
+gpg: assuming signed data in 'image-sync-operator-0.2.1.tgz'
+gpg: Signature made Fri 27 Nov 2026 08:31:51 PM MST
+gpg:                using RSA key 7C3165A81E6E0F5452473731536EB5AC1BB52D60
+gpg: Good signature from "Apex Northwest Releases (Release signing key) <admin@apexnorthwest.com>" [unknown]
+```
+
+GPG will complain the key isn't cross-trusted but that's normal in this case.
+
 ## License
 Copyright 2026 Apex Northwest
 
