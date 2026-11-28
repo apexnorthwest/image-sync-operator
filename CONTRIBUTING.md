@@ -6,7 +6,7 @@ rejected due to a contribution guideline issue, we'll do our best to be clear
 about why and what you can do to resolve it. We're all on the same team.
 
 ## Guidelines for Contributing
-### Rule 1: Style and Linting
+### Rule 1: Style, Tests, and Linting
 This project uses standard rust conventions. You should have an appropriate
 amount of comments to make clear what your code does without going into too
 much detail. Additionally, we expect the code to pass machete, cargo check,
@@ -26,6 +26,11 @@ cargo check
 cargo clippy
 cargo machete
 ```
+
+Similarly, all features of the CRD must have tests for all valid and invalid option
+combinations. Three full test suites are available and appropriate features should
+be tested in the appropriate test suite. At very minimum, features should have smoke
+tests in the kmock suite. Details are in TESTING.md.
 
 ### Rule 2: External tooling
 Any additional libraries or features you want to add to the manifest must be

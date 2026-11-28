@@ -7,6 +7,10 @@ their ImageSync owner is deleted; it does not emulate all Kubernetes garbage-col
 The KMock integration test workflow runs the full suite, including slow tests, on pull requests
 and can also be started manually.
 
+Run the default suite through Cargo from the repository root with `cargo test` or
+`cargo test --test kmock`. This requires Python 3.12+ and `uv` and uses the
+operator binary built by Cargo, regardless of `IMAGE_SYNC_OPERATOR_BIN`.
+
 ```sh
 cd tests/kmock
 ./run_tests.py                       # build the operator, run everything except slow tests

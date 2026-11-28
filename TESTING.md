@@ -35,6 +35,12 @@ A fake-cluster test suite that runs the real operator binary against a KMock-bas
 
 ### Running Tests
 
+From the repository root, `cargo test` runs the default KMock suite alongside
+the Rust tests. Use `cargo test --test kmock` to run only KMock. Both use the
+operator binary built by Cargo, overriding `IMAGE_SYNC_OPERATOR_BIN`.
+
+For suite options such as categories and slow tests, run the script directly:
+
 ```sh
 cd tests/kmock
 
